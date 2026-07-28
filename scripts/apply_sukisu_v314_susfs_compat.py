@@ -1,0 +1,328 @@
+#!/usr/bin/env python3
+"""Finish the official SUSFS 1.5.5 integration for SukiSU Ultra v3.1.4.
+
+Run this only after 10_enable_susfs_for_ksu.patch.  That patch targets a
+nearby legacy KernelSU revision; SukiSU v3.1.4 has the same ABI but differs
+at three guarded locations.  Every edit below requires an exact match.
+"""
+
+from pathlib import Path
+
+
+ROOT = Path.cwd() / "KernelSU"
+EXPECTED_REJECTS = {
+    Path("kernel/Makefile.rej"),
+    Path("kernel/core_hook.c.rej"),
+}
+
+
+def read(path: str) -> str:
+    return (ROOT / path).read_text()
+
+
+def write(path: str, content: str) -> None:
+    (ROOT / path).write_text(content)
+
+
+def replace_once(content: str, old: str, new: str, label: str) -> str:
+    count = content.count(old)
+    if count != 1:
+        raise RuntimeError(f"{label}: expected exactly one match, found {count}")
+    return content.replace(old, new, 1)
+
+
+rejects = {
+    path.relative_to(ROOT)
+    for path in ROOT.rglob("*.rej")
+}
+if rejects != EXPECTED_REJECTS:
+    raise RuntimeError(
+        "unexpected SukiSU integration rejects: "
+        f"expected {sorted(map(str, EXPECTED_REJECTS))}, "
+        f"found {sorted(map(str, rejects))}"
+    )
+
+
+makefile_path = "kernel/Makefile"
+makefile = read(makefile_path)
+makefile_marker = """\
+ccflags-y += -Wno-implicit-function-declaration -Wno-strict-prototypes -Wno-int-conversion -Wno-gcc-compat
+ccflags-y += -Wno-declaration-after-statement -Wno-unused-function
+
+# Keep a new line here!! Because someone may append config
+"""
+makefile_replacement = """\
+ccflags-y += -Wno-implicit-function-declaration -Wno-strict-prototypes -Wno-int-conversion -Wno-gcc-compat
+ccflags-y += -Wno-declaration-after-statement -Wno-unused-function
+
+## SUSFS legacy non-GKI compatibility ##
+ifeq ($(shell grep -q " current_sid(void)" $(srctree)/security/selinux/include/objsec.h; echo $$?),0)
+ccflags-y += -DKSU_COMPAT_HAS_CURRENT_SID
+endif
+
+ifeq ($(shell grep -q "struct selinux_state " $(srctree)/security/selinux/include/security.h; echo $$?),0)
+ccflags-y += -DKSU_COMPAT_HAS_SELINUX_STATE
+endif
+
+ccflags-y += -DKSU_UMOUNT
+
+ifeq ($(shell test -e $(srctree)/fs/susfs.c; echo $$?),0)
+$(eval SUSFS_VERSION=$(shell grep -E '^#define SUSFS_VERSION' $(srctree)/include/linux/susfs.h | cut -d' ' -f3 | sed 's/"//g'))
+$(info -- SUSFS_VERSION: $(SUSFS_VERSION))
+else
+$(error SUSFS source is missing from the kernel tree)
+endif
+
+# Keep a new line here!! Because someone may append config
+"""
+makefile = replace_once(
+    makefile,
+    makefile_marker,
+    makefile_replacement,
+    "KernelSU Makefile SUSFS flags",
+)
+write(makefile_path, makefile)
+
+
+core_path = "kernel/core_hook.c"
+core = read(core_path)
+core_header_old = """\
+#include "kpm/kpm.h"
+
+static bool ksu_module_mounted = false;
+
+extern int handle_sepolicy(unsigned long arg3, void __user *arg4);
+
+static bool ksu_su_compat_enabled = true;
+extern void ksu_sucompat_init();
+extern void ksu_sucompat_exit();
+
+static inline bool is_allow_su()
+{
+	if (is_manager()) {
+		// we are manager, allow!
+		return true;
+	}
+	return ksu_is_allow_uid(current_uid().val);
+}
+"""
+core_header_new = """\
+#include "kpm/kpm.h"
+
+#ifdef CONFIG_KSU_SUSFS
+bool susfs_is_allow_su(void)
+{
+	if (ksu_is_manager()) {
+		// we are manager, allow!
+		return true;
+	}
+	return ksu_is_allow_uid(current_uid().val);
+}
+
+extern u32 susfs_zygote_sid;
+extern bool susfs_is_mnt_devname_ksu(struct path *path);
+#ifdef CONFIG_KSU_SUSFS_ENABLE_LOG
+extern bool susfs_is_log_enabled __read_mostly;
+#endif
+#ifdef CONFIG_KSU_SUSFS_TRY_UMOUNT
+extern void susfs_run_try_umount_for_current_mnt_ns(void);
+#endif
+#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
+static bool susfs_is_umount_for_zygote_system_process_enabled;
+#endif
+#ifdef CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT
+extern bool susfs_is_auto_add_sus_bind_mount_enabled;
+#endif
+#ifdef CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT
+extern bool susfs_is_auto_add_sus_ksu_default_mount_enabled;
+#endif
+#ifdef CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT
+extern bool susfs_is_auto_add_try_umount_for_bind_mount_enabled;
+#endif
+
+static inline void susfs_on_post_fs_data(void)
+{
+	struct path path;
+#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
+	if (!kern_path(DATA_ADB_UMOUNT_FOR_ZYGOTE_SYSTEM_PROCESS, 0, &path)) {
+		susfs_is_umount_for_zygote_system_process_enabled = true;
+		path_put(&path);
+	}
+	pr_info("susfs_is_umount_for_zygote_system_process_enabled: %d\\n",
+		susfs_is_umount_for_zygote_system_process_enabled);
+#endif
+#ifdef CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT
+	if (!kern_path(DATA_ADB_NO_AUTO_ADD_SUS_BIND_MOUNT, 0, &path)) {
+		susfs_is_auto_add_sus_bind_mount_enabled = false;
+		path_put(&path);
+	}
+	pr_info("susfs_is_auto_add_sus_bind_mount_enabled: %d\\n",
+		susfs_is_auto_add_sus_bind_mount_enabled);
+#endif
+#ifdef CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT
+	if (!kern_path(DATA_ADB_NO_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT, 0, &path)) {
+		susfs_is_auto_add_sus_ksu_default_mount_enabled = false;
+		path_put(&path);
+	}
+	pr_info("susfs_is_auto_add_sus_ksu_default_mount_enabled: %d\\n",
+		susfs_is_auto_add_sus_ksu_default_mount_enabled);
+#endif
+#ifdef CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT
+	if (!kern_path(DATA_ADB_NO_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT, 0, &path)) {
+		susfs_is_auto_add_try_umount_for_bind_mount_enabled = false;
+		path_put(&path);
+	}
+	pr_info("susfs_is_auto_add_try_umount_for_bind_mount_enabled: %d\\n",
+		susfs_is_auto_add_try_umount_for_bind_mount_enabled);
+#endif
+}
+#endif
+
+static bool ksu_module_mounted = false;
+
+extern int ksu_handle_sepolicy(unsigned long arg3, void __user *arg4);
+
+static bool ksu_su_compat_enabled = true;
+extern void ksu_sucompat_init();
+extern void ksu_sucompat_exit();
+
+static inline bool is_allow_su()
+{
+	if (ksu_is_manager()) {
+		// we are manager, allow!
+		return true;
+	}
+	return ksu_is_allow_uid(current_uid().val);
+}
+"""
+core = replace_once(
+    core,
+    core_header_old,
+    core_header_new,
+    "core_hook SUSFS declarations",
+)
+
+umount_tail_old = """\
+	if (check_mnt && !should_umount(&path)) {
+		return;
+	}
+
+	ksu_umount_mnt(&path, flags);
+}
+
+int ksu_handle_setuid(struct cred *new, const struct cred *old)
+"""
+umount_tail_new = """\
+	if (check_mnt && !should_umount(&path)) {
+		return;
+	}
+
+#if defined(CONFIG_KSU_SUSFS_TRY_UMOUNT) && defined(CONFIG_KSU_SUSFS_ENABLE_LOG)
+	if (susfs_is_log_enabled) {
+		pr_info("susfs: umounting '%s' for uid: %d\\n", mnt, uid);
+	}
+#endif
+
+	ksu_umount_mnt(&path, flags);
+}
+
+#ifdef CONFIG_KSU_SUSFS_TRY_UMOUNT
+void susfs_try_umount_all(uid_t uid)
+{
+	susfs_try_umount(uid);
+	ksu_try_umount("/system", true, 0, uid);
+	ksu_try_umount("/system_ext", true, 0, uid);
+	ksu_try_umount("/vendor", true, 0, uid);
+	ksu_try_umount("/product", true, 0, uid);
+	ksu_try_umount("/odm", true, 0, uid);
+	ksu_try_umount("/data/adb/modules", false, MNT_DETACH, uid);
+	ksu_try_umount("/debug_ramdisk", true, MNT_DETACH, uid);
+}
+#endif
+
+int ksu_handle_setuid(struct cred *new, const struct cred *old)
+"""
+core = replace_once(
+    core,
+    umount_tail_old,
+    umount_tail_new,
+    "core_hook SUSFS try-umount bridge",
+)
+
+setuid_old = """\
+	// check old process's selinux context, if it is not zygote, ignore it!
+	// because some su apps may setuid to untrusted_app but they are in global mount namespace
+	// when we umount for such process, that is a disaster!
+	bool is_zygote_child = is_zygote(old->security);
+	if (!is_zygote_child) {
+		pr_info("handle umount ignore non zygote child: %d\\n",
+			current->pid);
+		return 0;
+	}
+#ifdef CONFIG_KSU_DEBUG
+	// umount the target mnt
+	pr_info("handle umount for uid: %d, pid: %d\\n", new_uid.val,
+		current->pid);
+#endif
+
+	// fixme: use `collect_mounts` and `iterate_mount` to iterate all mountpoint and
+	// filter the mountpoint whose target is `/data/adb`
+	try_umount("/system", true, 0);
+	try_umount("/vendor", true, 0);
+	try_umount("/product", true, 0);
+	try_umount("/system_ext", true, 0);
+	try_umount("/data/adb/modules", false, MNT_DETACH);
+
+	// try umount ksu temp path
+	try_umount("/debug_ramdisk", false, MNT_DETACH);
+"""
+setuid_new = """\
+#ifndef CONFIG_KSU_SUSFS_SUS_MOUNT
+	// check old process's selinux context, if it is not zygote, ignore it!
+	// because some su apps may setuid to untrusted_app but they are in global mount namespace
+	// when we umount for such process, that is a disaster!
+	bool is_zygote_child = ksu_is_zygote(old->security);
+#endif
+	if (!is_zygote_child) {
+		pr_info("handle umount ignore non zygote child: %d\\n",
+			current->pid);
+		return 0;
+	}
+#ifdef CONFIG_KSU_DEBUG
+	// umount the target mnt
+	pr_info("handle umount for uid: %d, pid: %d\\n", new_uid.val,
+		current->pid);
+#endif
+
+#ifdef CONFIG_KSU_SUSFS_TRY_UMOUNT
+	// SUSFS rules run first; KernelSU mountpoints are unmounted afterwards.
+	susfs_try_umount_all(new_uid.val);
+#else
+	// fixme: use `collect_mounts` and `iterate_mount` to iterate all mountpoint and
+	// filter the mountpoint whose target is `/data/adb`
+	ksu_try_umount("/system", true, 0);
+	ksu_try_umount("/vendor", true, 0);
+	ksu_try_umount("/product", true, 0);
+	ksu_try_umount("/system_ext", true, 0);
+	ksu_try_umount("/data/adb/modules", false, MNT_DETACH);
+
+	// try umount ksu temp path
+	ksu_try_umount("/debug_ramdisk", false, MNT_DETACH);
+#endif
+"""
+core = replace_once(
+    core,
+    setuid_old,
+    setuid_new,
+    "core_hook setuid integration",
+)
+write(core_path, core)
+
+
+for reject in EXPECTED_REJECTS:
+    (ROOT / reject).unlink()
+
+for original in ROOT.rglob("*.orig"):
+    original.unlink()
+
+print("Applied guarded SukiSU v3.1.4 / SUSFS 1.5.5 compatibility edits.")
