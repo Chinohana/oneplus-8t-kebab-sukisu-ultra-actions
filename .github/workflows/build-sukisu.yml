@@ -149,13 +149,13 @@ jobs:
 
           cp ../susfs4ksu/kernel_patches/fs/* fs/
           cp ../susfs4ksu/kernel_patches/include/linux/* include/linux/
-          patch --batch --forward -p1 \
-            < ../susfs4ksu/kernel_patches/50_add_susfs_in_kernel-4.19.patch
+          git apply --3way --whitespace=nowarn \
+            ../susfs4ksu/kernel_patches/50_add_susfs_in_kernel-4.19.patch
 
-          if patch --dry-run --batch --forward -d KernelSU -p1 \
-            < ../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch; then
-            patch --batch --forward -d KernelSU -p1 \
-              < ../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch
+          if git -C KernelSU apply --check --whitespace=nowarn \
+            ../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch; then
+            git -C KernelSU apply --whitespace=nowarn \
+              ../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch
           else
             echo "SukiSU already carries an incompatible or equivalent SUSFS integration."
             exit 1
