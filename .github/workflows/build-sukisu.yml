@@ -163,6 +163,8 @@ jobs:
           python3 "$GITHUB_WORKSPACE/scripts/apply_susfs_4_19_compat.py"
           test "$PATCH_STATUS" -eq 1
           test -z "$(find . -name '*.rej' -print -quit)"
+          sed -i 's/[[:space:]]\+$//' \
+            fs/namespace.c fs/overlayfs/readdir.c
           git diff --check
 
       - name: Apply hide-stuff patch
