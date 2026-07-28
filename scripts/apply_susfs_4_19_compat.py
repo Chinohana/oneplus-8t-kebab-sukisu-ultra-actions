@@ -231,7 +231,7 @@ task_mmu_path = "fs/proc/task_mmu.c"
 task_mmu = read(task_mmu_path)
 require_once(
     task_mmu,
-    "CONFIG_KSU_SUSFS_SUS_KSTAT",
+    "#include <linux/susfs_def.h>",
     "upstream task_mmu SUSFS include",
 )
 
