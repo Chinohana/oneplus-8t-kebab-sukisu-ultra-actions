@@ -32,6 +32,8 @@ env:
   KERNEL_DEFCONFIG: vendor/kona-perf_defconfig
   OPLUS_CONFIG: vendor/oplus.config
   EXPECTED_BASE_COMMIT: "4238ee49a84b"
+  SUKISU_TAG: v3.1.4
+  SUKISU_COMMIT: d7430733090f40870bc6d4b6b50ef08a91a92088
   CLANG_REVISION: clang-r563880
   CLANG_ARCHIVE_COMMIT: 6f88d37dd82ba741ca279539d44bb7da27ab1844
   ANYKERNEL_REPOSITORY: https://github.com/osm0sis/AnyKernel3.git
@@ -130,20 +132,18 @@ jobs:
           sed -i 's/ -dirty//g' scripts/setlocalversion
           sed -i '$i res=$(echo "$res" | sed '\''s/-dirty//g'\'')' scripts/setlocalversion
 
-      - name: Add SukiSU Ultra in builtin mode
+      - name: Add pinned SukiSU Ultra for legacy SUSFS
         run: |
           set -euo pipefail
           cd kernel_workspace
           curl -LSs \
             "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" \
-            | bash -s builtin
+            | bash -s "$SUKISU_TAG"
           test -d KernelSU
+          test "$(git -C KernelSU rev-parse HEAD)" = "$SUKISU_COMMIT"
           KSU_VERSION="$(($(git -C KernelSU rev-list --count HEAD) + 10606))"
           echo "KSU_VERSION=$KSU_VERSION" >> "$GITHUB_ENV"
           echo "SukiSU commit: $(git -C KernelSU rev-parse HEAD)"
-          python3 "$GITHUB_WORKSPACE/scripts/apply_sukisu_4_19_compat.py" \
-            "$GITHUB_WORKSPACE/kernel_workspace/KernelSU"
-          git -C KernelSU diff --check
 
       - name: Apply SUSFS 4.19 patches
         if: ${{ inputs.susfs }}
@@ -169,6 +169,19 @@ jobs:
           sed -i 's/[[:space:]]\+$//' \
             fs/namespace.c fs/overlayfs/readdir.c
           git diff --check
+
+          set +e
+          (
+            cd KernelSU
+            patch --batch --forward -p1 -F 3 \
+              < ../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch
+          )
+          KSU_PATCH_STATUS=$?
+          set -e
+          find KernelSU -name '*.rej' -print
+          test "$KSU_PATCH_STATUS" -eq 0
+          test -z "$(find KernelSU -name '*.rej' -print -quit)"
+          git -C KernelSU diff --check
 
       - name: Apply hide-stuff patch
         run: |

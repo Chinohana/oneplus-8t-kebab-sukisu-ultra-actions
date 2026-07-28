@@ -20,7 +20,7 @@ The workflow structure follows
 2. configure Git and install dependencies;
 3. initialize and sync kernel sources;
 4. remove the `-dirty` suffix;
-5. integrate SukiSU Ultra in builtin mode;
+5. integrate the pinned SukiSU Ultra legacy-compatible tag;
 6. apply SUSFS and hide-stuff patches;
 7. enable SukiSU, KPM and SUSFS configuration;
 8. build the kernel;
@@ -42,6 +42,11 @@ device choices, GKI patches and Bazel build with the exact LineageOS SM8250
 `vendor/oplus.config`, and the Android Clang revision observed on the target
 device.
 
+SUSFS `kernel-4.19` is the official v1.5.5-era branch. The workflow pins
+SukiSU Ultra `v3.1.4` (`d7430733090f40870bc6d4b6b50ef08a91a92088`), whose
+official documentation still used manual SUSFS integration for non-GKI
+kernels. Current `builtin` expects the incompatible SUSFS v2.2.0 interface.
+
 ## Safety
 
 - Do not use this artifact on another device or ROM/kernel revision.
@@ -51,4 +56,3 @@ device.
 - Verify the SHA-256 and build provenance before testing.
 - Prefer a temporary boot test when supported. Flashing is never automated by
   this repository.
-
