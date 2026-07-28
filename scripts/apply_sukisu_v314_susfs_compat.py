@@ -3,7 +3,8 @@
 
 Run this only after 10_enable_susfs_for_ksu.patch.  That patch targets a
 nearby legacy KernelSU revision; SukiSU v3.1.4 has the same ABI but differs
-at three guarded locations.  Every edit below requires an exact match.
+at a small set of guarded locations.  Every edit below requires an exact
+match.
 """
 
 from pathlib import Path
@@ -374,6 +375,21 @@ core = replace_once(
     "core_hook setuid integration",
 )
 write(core_path, core)
+
+
+ksu_path = "kernel/ksu.c"
+ksu = read(ksu_path)
+ksu = replace_once(
+    ksu,
+    "MODULE_IMPORT_NS(VFS_internal_I_am_really_a_filesystem_and_am_NOT_a_driver);\n",
+    """\
+#ifdef MODULE_IMPORT_NS
+MODULE_IMPORT_NS(VFS_internal_I_am_really_a_filesystem_and_am_NOT_a_driver);
+#endif
+""",
+    "Linux 4.19 module namespace compatibility",
+)
+write(ksu_path, ksu)
 
 
 for reject in EXPECTED_REJECTS:
