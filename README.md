@@ -47,9 +47,10 @@ SukiSU Ultra `v3.1.4` (`d7430733090f40870bc6d4b6b50ef08a91a92088`), whose
 official documentation still used manual SUSFS integration for non-GKI
 kernels. Current `builtin` expects the incompatible SUSFS v2.2.0 interface.
 Because this vendor kernel retains the legacy SELinux `flex_array` policydb
-layout, the workflow also reverses only the `sepolicy.c` portion of SukiSU's
-own `898e9d4f` non-GKI removal commit before applying SUSFS. This restores the
-upstream-maintained 4.x policydb paths without replacing SukiSU v3.1.4.
+layout and `selinux_state.ss`, the workflow also reverses only the SELinux
+portions of SukiSU's own `898e9d4f` non-GKI removal commit before applying
+SUSFS. This restores the upstream-maintained 4.x SELinux paths without
+replacing SukiSU v3.1.4.
 
 ## Safety
 

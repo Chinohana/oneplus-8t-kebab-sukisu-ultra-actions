@@ -171,16 +171,22 @@ jobs:
             fs/namespace.c fs/overlayfs/readdir.c
           git diff --check
 
-          # Restore SukiSU's own last pre-drop SELinux policydb paths.  This
-          # vendor 4.19 tree uses the legacy flex_array policydb layout.
+          # Restore SukiSU's own last pre-drop SELinux paths.  This vendor
+          # 4.19 tree uses selinux_state.ss and the flex_array policydb.
           git -C KernelSU show --format= \
-            "$SUKISU_DROP_NONGKI_COMMIT" -- kernel/selinux/sepolicy.c \
+            "$SUKISU_DROP_NONGKI_COMMIT" -- \
+            kernel/selinux/sepolicy.c \
+            kernel/selinux/rules.c \
+            kernel/selinux/selinux.c \
+            kernel/selinux/selinux.h \
             | patch --batch --forward -R -p1 -F 0 -d KernelSU
           grep -q \
             '#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 7, 0)' \
             KernelSU/kernel/selinux/sepolicy.c
           grep -q 'type_val_to_struct_array' \
             KernelSU/kernel/selinux/sepolicy.c
+          grep -q 'KSU_COMPAT_USE_SELINUX_STATE' \
+            KernelSU/kernel/selinux/selinux.h
 
           set +e
           (
