@@ -83,7 +83,7 @@ jobs:
 
       - name: Cache Android Clang r563880
         id: cache-clang
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: toolchains/clang
           key: android-clang-r563880-linux-x86
@@ -101,6 +101,13 @@ jobs:
         run: |
           "$GITHUB_WORKSPACE/toolchains/clang/bin/clang" --version
 
+      - name: Save Android Clang r563880 cache
+        if: steps.cache-clang.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: toolchains/clang
+          key: android-clang-r563880-linux-x86
+
       - name: Initialize and sync exact LineageOS kernel
         run: |
           set -euo pipefail
@@ -108,8 +115,7 @@ jobs:
           cd kernel_workspace
           git remote add origin "$KERNEL_REPOSITORY"
           git fetch --depth=256 origin "refs/heads/$KERNEL_BRANCH"
-          RESOLVED_COMMIT="$(git rev-list FETCH_HEAD | grep -m1 '^${{ inputs.kernel_commit }}')"
-          test -n "$RESOLVED_COMMIT"
+          RESOLVED_COMMIT="$(git rev-parse --verify '${{ inputs.kernel_commit }}^{commit}')"
           git checkout --detach "$RESOLVED_COMMIT"
           test "$(git rev-parse --short=12 HEAD)" = "${{ inputs.kernel_commit }}"
           git log -1 --oneline
