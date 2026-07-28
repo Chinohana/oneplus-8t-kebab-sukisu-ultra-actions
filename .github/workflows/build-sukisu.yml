@@ -1,0 +1,297 @@
+name: Build kebab LineageOS 23.2 SukiSU Ultra
+
+on:
+  workflow_dispatch:
+    inputs:
+      kernel_commit:
+        description: "Exact LineageOS kernel commit"
+        required: true
+        default: "4238ee49a84b"
+        type: string
+      susfs:
+        description: "Apply the official SUSFS kernel-4.19 patches"
+        required: true
+        default: true
+        type: boolean
+      kpm:
+        description: "Enable and apply KPM"
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kebab-sukisu-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  KERNEL_REPOSITORY: https://github.com/LineageOS/android_kernel_oneplus_sm8250.git
+  KERNEL_BRANCH: lineage-23.2
+  KERNEL_DEFCONFIG: vendor/kona-perf_defconfig
+  OPLUS_CONFIG: vendor/oplus.config
+  EXPECTED_BASE_COMMIT: "4238ee49a84b"
+  CLANG_REVISION: clang-r563880
+  CLANG_ARCHIVE_COMMIT: 6f88d37dd82ba741ca279539d44bb7da27ab1844
+  ANYKERNEL_REPOSITORY: https://github.com/osm0sis/AnyKernel3.git
+  SUSFS_REPOSITORY: https://gitlab.com/simonpunk/susfs4ksu.git
+  SUSFS_BRANCH: kernel-4.19
+
+jobs:
+  build:
+    name: SM8250 4.19 / kebab
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+
+    steps:
+      - name: Maximize build space
+        uses: easimon/maximize-build-space@master
+        with:
+          root-reserve-mb: 8192
+          temp-reserve-mb: 2048
+          swap-size-mb: 8192
+          remove-dotnet: "true"
+          remove-android: "true"
+          remove-haskell: "true"
+          remove-codeql: "true"
+
+      - name: Configure Git
+        run: |
+          git config --global user.name "Chinohana"
+          git config --global user.email "41898282+Chinohana@users.noreply.github.com"
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            bc bison build-essential cpio curl flex git jq libelf-dev \
+            libssl-dev lz4 python3 rsync unzip wget zip
+
+      - name: Show selected inputs and runner state
+        run: |
+          set -eux
+          echo "Kernel repository: $KERNEL_REPOSITORY"
+          echo "Kernel branch: $KERNEL_BRANCH"
+          echo "Kernel commit: ${{ inputs.kernel_commit }}"
+          echo "Defconfig: $KERNEL_DEFCONFIG + $OPLUS_CONFIG"
+          echo "SUSFS: ${{ inputs.susfs }}"
+          echo "KPM: ${{ inputs.kpm }}"
+          echo "Toolchain: $CLANG_REVISION"
+          df -h
+          free -h
+
+      - name: Download Android Clang r563880
+        run: |
+          set -euo pipefail
+          mkdir -p "$GITHUB_WORKSPACE/toolchains/clang"
+          curl -fL --retry 5 --retry-delay 5 \
+            "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/${CLANG_ARCHIVE_COMMIT}/${CLANG_REVISION}.tar.gz" \
+            | tar -xz -C "$GITHUB_WORKSPACE/toolchains/clang"
+          "$GITHUB_WORKSPACE/toolchains/clang/bin/clang" --version
+
+      - name: Initialize and sync exact LineageOS kernel
+        run: |
+          set -euo pipefail
+          git init kernel_workspace
+          cd kernel_workspace
+          git remote add origin "$KERNEL_REPOSITORY"
+          git fetch --depth=1 origin "${{ inputs.kernel_commit }}"
+          git checkout --detach FETCH_HEAD
+          test "$(git rev-parse --short=12 HEAD)" = "${{ inputs.kernel_commit }}"
+          git log -1 --oneline
+
+      - name: Force remove dirty suffix
+        run: |
+          set -euo pipefail
+          cd kernel_workspace
+          sed -i 's/ -dirty//g' scripts/setlocalversion
+          sed -i '$i res=$(echo "$res" | sed '\''s/-dirty//g'\'')' scripts/setlocalversion
+
+      - name: Add SukiSU Ultra in builtin mode
+        run: |
+          set -euo pipefail
+          cd kernel_workspace
+          curl -LSs \
+            "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" \
+            | bash -s builtin
+          test -d KernelSU
+          KSU_VERSION="$(($(git -C KernelSU rev-list --count HEAD) + 10606))"
+          echo "KSU_VERSION=$KSU_VERSION" >> "$GITHUB_ENV"
+          echo "SukiSU commit: $(git -C KernelSU rev-parse HEAD)"
+
+      - name: Apply SUSFS 4.19 patches
+        if: ${{ inputs.susfs }}
+        run: |
+          set -euo pipefail
+          git clone --depth=1 --branch "$SUSFS_BRANCH" \
+            "$SUSFS_REPOSITORY" susfs4ksu
+          cd kernel_workspace
+
+          cp ../susfs4ksu/kernel_patches/fs/* fs/
+          cp ../susfs4ksu/kernel_patches/include/linux/* include/linux/
+          patch --batch --forward -p1 \
+            < ../susfs4ksu/kernel_patches/50_add_susfs_in_kernel-4.19.patch
+
+          if patch --dry-run --batch --forward -d KernelSU -p1 \
+            < ../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch; then
+            patch --batch --forward -d KernelSU -p1 \
+              < ../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch
+          else
+            echo "SukiSU already carries an incompatible or equivalent SUSFS integration."
+            exit 1
+          fi
+
+      - name: Apply hide-stuff patch
+        run: |
+          set -euo pipefail
+          git clone --depth=1 https://github.com/ShirkNeko/SukiSU_patch.git sukisu_patch
+          cd kernel_workspace
+          cp ../sukisu_patch/69_hide_stuff.patch .
+          patch --batch --forward -p1 -F 3 < 69_hide_stuff.patch
+
+      - name: Add configuration settings
+        run: |
+          set -euo pipefail
+          cd kernel_workspace
+          export PATH="$GITHUB_WORKSPACE/toolchains/clang/bin:$PATH"
+
+          make O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 "$KERNEL_DEFCONFIG"
+          scripts/kconfig/merge_config.sh -m -O out \
+            out/.config "arch/arm64/configs/$OPLUS_CONFIG"
+
+          scripts/config --file out/.config -e KSU
+          scripts/config --file out/.config -e KALLSYMS
+          scripts/config --file out/.config -e KALLSYMS_ALL
+
+          if [ "${{ inputs.kpm }}" = "true" ]; then
+            scripts/config --file out/.config -e KPM
+          else
+            scripts/config --file out/.config -d KPM
+          fi
+
+          if [ "${{ inputs.susfs }}" = "true" ]; then
+            scripts/config --file out/.config -e KSU_SUSFS
+            scripts/config --file out/.config -e KSU_SUSFS_HAS_MAGIC_MOUNT
+            scripts/config --file out/.config -e KSU_SUSFS_SUS_PATH
+            scripts/config --file out/.config -e KSU_SUSFS_SUS_MOUNT
+            scripts/config --file out/.config -e KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT
+            scripts/config --file out/.config -e KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT
+            scripts/config --file out/.config -e KSU_SUSFS_SUS_KSTAT
+            scripts/config --file out/.config -d KSU_SUSFS_SUS_OVERLAYFS
+            scripts/config --file out/.config -e KSU_SUSFS_TRY_UMOUNT
+            scripts/config --file out/.config -e KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT
+            scripts/config --file out/.config -e KSU_SUSFS_SPOOF_UNAME
+            scripts/config --file out/.config -e KSU_SUSFS_ENABLE_LOG
+            scripts/config --file out/.config -e KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS
+            scripts/config --file out/.config -e KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG
+            scripts/config --file out/.config -e KSU_SUSFS_OPEN_REDIRECT
+          fi
+
+          make O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 olddefconfig
+
+          grep -E \
+            'CONFIG_(KSU|KPM|KALLSYMS|KALLSYMS_ALL|KSU_SUSFS)(=|_)' \
+            out/.config | sort
+          grep -q '^CONFIG_KSU=y$' out/.config
+          grep -q '^CONFIG_KALLSYMS=y$' out/.config
+          grep -q '^CONFIG_KALLSYMS_ALL=y$' out/.config
+          if [ "${{ inputs.kpm }}" = "true" ]; then
+            grep -q '^CONFIG_KPM=y$' out/.config
+          fi
+          if [ "${{ inputs.susfs }}" = "true" ]; then
+            grep -q '^CONFIG_KSU_SUSFS=y$' out/.config
+          fi
+
+      - name: Build kernel
+        run: |
+          set -euo pipefail
+          cd kernel_workspace
+          export PATH="$GITHUB_WORKSPACE/toolchains/clang/bin:$PATH"
+          export KBUILD_BUILD_USER=github-actions
+          export KBUILD_BUILD_HOST=github
+          make -j"$(nproc --all)" O=out ARCH=arm64 \
+            LLVM=1 LLVM_IAS=1 \
+            KCFLAGS="-Wno-error" \
+            Image
+          test -s out/arch/arm64/boot/Image
+          file out/arch/arm64/boot/Image
+          ls -lh out/arch/arm64/boot/Image
+
+      - name: Apply KPM patch_linux
+        if: ${{ inputs.kpm }}
+        run: |
+          set -euo pipefail
+          cd kernel_workspace/out/arch/arm64/boot
+          curl -fLSs \
+            "https://raw.githubusercontent.com/ShirkNeko/SukiSU_patch/main/kpm/patch_linux" \
+            -o patch_linux
+          chmod +x patch_linux
+          ./patch_linux
+          test -s oImage
+          mv -f oImage Image
+          rm -f patch_linux
+
+      - name: Make AnyKernel3
+        run: |
+          set -euo pipefail
+          git clone --depth=1 "$ANYKERNEL_REPOSITORY" AnyKernel3
+          rm -rf AnyKernel3/.git
+          cp kernel_workspace/out/arch/arm64/boot/Image AnyKernel3/Image
+
+          sed -i 's/^do.devicecheck=.*/do.devicecheck=1/' AnyKernel3/anykernel.sh
+          sed -i 's/^device.name1=.*/device.name1=kebab/' AnyKernel3/anykernel.sh
+          sed -i 's/^device.name2=.*/device.name2=OnePlus8T/' AnyKernel3/anykernel.sh
+          sed -i 's/^device.name3=.*/device.name3=KB2000/' AnyKernel3/anykernel.sh
+          sed -i 's|^block=.*|block=/dev/block/by-name/boot;|' AnyKernel3/anykernel.sh
+          sed -i 's/^is_slot_device=.*/is_slot_device=1;/' AnyKernel3/anykernel.sh
+          sed -i 's/^do.modules=.*/do.modules=0/' AnyKernel3/anykernel.sh
+
+          rm -f AnyKernel3/README.md
+          PACKAGE_NAME="SukiSU-Ultra_kebab_LOS23.2_4.19_${{ inputs.kernel_commit }}_KSU${KSU_VERSION}"
+          if [ "${{ inputs.susfs }}" = "true" ]; then
+            PACKAGE_NAME="${PACKAGE_NAME}_SUSFS"
+          fi
+          if [ "${{ inputs.kpm }}" = "true" ]; then
+            PACKAGE_NAME="${PACKAGE_NAME}_KPM"
+          fi
+          (
+            cd AnyKernel3
+            zip -r9 "../${PACKAGE_NAME}.zip" . \
+              -x '.git/*' '*placeholder'
+          )
+          sha256sum "${PACKAGE_NAME}.zip" \
+            | tee "${PACKAGE_NAME}.zip.sha256"
+          echo "PACKAGE_NAME=$PACKAGE_NAME" >> "$GITHUB_ENV"
+
+      - name: Record build provenance
+        run: |
+          set -euo pipefail
+          {
+            echo "device=kebab"
+            echo "model=OnePlus 8T"
+            echo "rom=LineageOS 23.2"
+            echo "kernel_repository=$KERNEL_REPOSITORY"
+            echo "kernel_commit=$(git -C kernel_workspace rev-parse HEAD)"
+            echo "sukisu_commit=$(git -C kernel_workspace/KernelSU rev-parse HEAD)"
+            echo "susfs=${{ inputs.susfs }}"
+            if [ "${{ inputs.susfs }}" = "true" ]; then
+              echo "susfs_commit=$(git -C susfs4ksu rev-parse HEAD)"
+            fi
+            echo "kpm=${{ inputs.kpm }}"
+            echo "clang=$("$GITHUB_WORKSPACE/toolchains/clang/bin/clang" --version | head -n1)"
+            echo "package=${PACKAGE_NAME}.zip"
+            cat "${PACKAGE_NAME}.zip.sha256"
+          } | tee build-provenance.txt
+
+      - name: Upload AnyKernel3
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.PACKAGE_NAME }}
+          path: |
+            ${{ env.PACKAGE_NAME }}.zip
+            ${{ env.PACKAGE_NAME }}.zip.sha256
+            build-provenance.txt
+          if-no-files-found: error
+          retention-days: 1
+
