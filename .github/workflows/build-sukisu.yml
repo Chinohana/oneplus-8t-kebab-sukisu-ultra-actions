@@ -141,6 +141,9 @@ jobs:
           KSU_VERSION="$(($(git -C KernelSU rev-list --count HEAD) + 10606))"
           echo "KSU_VERSION=$KSU_VERSION" >> "$GITHUB_ENV"
           echo "SukiSU commit: $(git -C KernelSU rev-parse HEAD)"
+          python3 "$GITHUB_WORKSPACE/scripts/apply_sukisu_4_19_compat.py" \
+            "$GITHUB_WORKSPACE/kernel_workspace/KernelSU"
+          git -C KernelSU diff --check
 
       - name: Apply SUSFS 4.19 patches
         if: ${{ inputs.susfs }}
