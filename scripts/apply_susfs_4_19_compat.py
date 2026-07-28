@@ -240,7 +240,7 @@ mount_path = "include/linux/mount.h"
 mount = read(mount_path)
 require_once(
     mount,
-    "susfs_mnt_id_backup",
+    "ANDROID_KABI_USE(4, u64 susfs_mnt_id_backup);",
     "upstream vfsmount SUSFS KABI field",
 )
 
