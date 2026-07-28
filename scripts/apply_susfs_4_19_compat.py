@@ -12,8 +12,6 @@ from pathlib import Path
 ROOT = Path.cwd()
 EXPECTED_REJECTS = {
     Path("fs/namespace.c.rej"),
-    Path("fs/proc/task_mmu.c.rej"),
-    Path("include/linux/mount.h.rej"),
 }
 
 
@@ -30,6 +28,12 @@ def replace_once(content: str, old: str, new: str, label: str) -> str:
     if count != 1:
         raise RuntimeError(f"{label}: expected exactly one match, found {count}")
     return content.replace(old, new, 1)
+
+
+def require_once(content: str, needle: str, label: str) -> None:
+    count = content.count(needle)
+    if count != 1:
+        raise RuntimeError(f"{label}: expected exactly one match, found {count}")
 
 
 def replace_once_in_region(
@@ -66,49 +70,47 @@ if rejects != EXPECTED_REJECTS:
 namespace_path = "fs/namespace.c"
 namespace = read(namespace_path)
 
+require_once(
+    namespace,
+    "#define CL_COPY_MNT_NS BIT(25) /* used by copy_mnt_ns() */",
+    "upstream SUSFS namespace declarations",
+)
+
+# With fuzz 3, the two upstream mount-ID blocks apply to syntactically similar
+# sites rather than the fs_context-specific sites. Remove those exact upstream
+# blocks first, then place them in the correct functions below.
+upstream_vfs_id_block = """
+#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
+	// If caller process is zygote, then it is a normal mount, so we just reorder the mnt_id
+	if (susfs_is_current_zygote_domain()) {
+		mnt->mnt.susfs_mnt_id_backup = mnt->mnt_id;
+		mnt->mnt_id = current->susfs_last_fake_mnt_id++;
+	}
+#endif
+
+"""
 namespace = replace_once(
     namespace,
-    """#include <linux/fs_context.h>
-#include "pnode.h"
-#include "internal.h"
+    upstream_vfs_id_block,
+    "",
+    "remove fuzz-relocated vfs mount-ID block",
+)
 
-/* Maximum number of mounts in a mount namespace */
-""",
-    """#include <linux/fs_context.h>
-#if defined(CONFIG_KSU_SUSFS_SUS_MOUNT) || defined(CONFIG_KSU_SUSFS_TRY_UMOUNT)
-#include <linux/susfs_def.h>
-#endif
-
-#include "pnode.h"
-#include "internal.h"
-
+upstream_clone_id_block = """
 #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
-extern bool susfs_is_current_ksu_domain(void);
-extern bool susfs_is_current_zygote_domain(void);
-
-static DEFINE_IDA(susfs_mnt_id_ida);
-static DEFINE_IDA(susfs_mnt_group_ida);
-
-#define CL_ZYGOTE_COPY_MNT_NS BIT(24) /* used by copy_mnt_ns() */
-#define CL_COPY_MNT_NS BIT(25) /* used by copy_mnt_ns() */
+	// If caller process is zygote and not doing unshare, so we just reorder the mnt_id
+	if (likely(is_current_zygote_domain) && !(flag & CL_ZYGOTE_COPY_MNT_NS)) {
+		mnt->mnt.susfs_mnt_id_backup = mnt->mnt_id;
+		mnt->mnt_id = current->susfs_last_fake_mnt_id++;
+	}
 #endif
 
-#ifdef CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT
-extern void susfs_auto_add_sus_ksu_default_mount(const char __user *to_pathname);
-bool susfs_is_auto_add_sus_ksu_default_mount_enabled = true;
-#endif
-#ifdef CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT
-extern int susfs_auto_add_sus_bind_mount(const char *pathname, struct path *path_target);
-bool susfs_is_auto_add_sus_bind_mount_enabled = true;
-#endif
-#ifdef CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT
-extern void susfs_auto_add_try_umount_for_bind_mount(struct path *path);
-bool susfs_is_auto_add_try_umount_for_bind_mount_enabled = true;
-#endif
-
-/* Maximum number of mounts in a mount namespace */
-""",
-    "namespace includes and SUSFS declarations",
+"""
+namespace = replace_once(
+    namespace,
+    upstream_clone_id_block,
+    "",
+    "remove fuzz-relocated clone mount-ID block",
 )
 
 namespace = replace_once_in_region(
@@ -129,20 +131,16 @@ namespace = replace_once_in_region(
     "vfs_create_mount SUSFS allocation",
 )
 
-vfs_start = namespace.find("struct vfsmount *vfs_create_mount(struct fs_context *fc)")
-vfs_end = namespace.find("EXPORT_SYMBOL(vfs_create_mount);", vfs_start)
-vfs_region = namespace[vfs_start:vfs_end]
-if "susfs_last_fake_mnt_id" not in vfs_region:
-    namespace = replace_once_in_region(
-        namespace,
-        "struct vfsmount *vfs_create_mount(struct fs_context *fc)",
-        "EXPORT_SYMBOL(vfs_create_mount);",
-        """	mnt->mnt_mountpoint	= mnt->mnt.mnt_root;
+namespace = replace_once_in_region(
+    namespace,
+    "struct vfsmount *vfs_create_mount(struct fs_context *fc)",
+    "EXPORT_SYMBOL(vfs_create_mount);",
+    """	mnt->mnt_mountpoint	= mnt->mnt.mnt_root;
 	mnt->mnt_parent		= mnt;
 
 	lock_mount_hash();
 """,
-        """	mnt->mnt_mountpoint	= mnt->mnt.mnt_root;
+    """	mnt->mnt_mountpoint	= mnt->mnt.mnt_root;
 	mnt->mnt_parent		= mnt;
 
 #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
@@ -155,8 +153,8 @@ if "susfs_last_fake_mnt_id" not in vfs_region:
 
 	lock_mount_hash();
 """,
-        "vfs_create_mount zygote mount ID",
-    )
+    "vfs_create_mount zygote mount ID",
+)
 
 namespace = replace_once_in_region(
     namespace,
@@ -208,15 +206,6 @@ namespace = replace_once_in_region(
     "\nstruct mount *copy_tree(",
     """	mnt->mnt_mountpoint = mnt->mnt.mnt_root;
 	mnt->mnt_parent = mnt;
-
-#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
-	// If caller process is zygote, then it is a normal mount, so we just reorder the mnt_id
-	if (susfs_is_current_zygote_domain()) {
-		mnt->mnt.susfs_mnt_id_backup = mnt->mnt_id;
-		mnt->mnt_id = current->susfs_last_fake_mnt_id++;
-	}
-#endif
-
 	lock_mount_hash();
 """,
     """	mnt->mnt_mountpoint = mnt->mnt.mnt_root;
@@ -240,42 +229,23 @@ write(namespace_path, namespace)
 
 task_mmu_path = "fs/proc/task_mmu.c"
 task_mmu = read(task_mmu_path)
-task_mmu = replace_once(
+require_once(
     task_mmu,
-    """#include <linux/mm_inline.h>
-#include <linux/ctype.h>
-""",
-    """#include <linux/mm_inline.h>
 #ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
 #include <linux/susfs_def.h>
-#endif
-#include <linux/ctype.h>
 """,
-    "task_mmu SUSFS include",
+    "upstream task_mmu SUSFS include",
 )
-write(task_mmu_path, task_mmu)
 
 
 mount_path = "include/linux/mount.h"
 mount = read(mount_path)
-mount = replace_once(
+require_once(
     mount,
-    """	ANDROID_KABI_RESERVE(3);
-	ANDROID_KABI_RESERVE(4);
-""",
-    """	ANDROID_KABI_RESERVE(3);
-#ifdef CONFIG_KSU_SUSFS
 	ANDROID_KABI_USE(4, u64 susfs_mnt_id_backup);
-#else
-	ANDROID_KABI_RESERVE(4);
-#endif
-#if defined(CONFIG_KSU_SUSFS) && !defined(ANDROID_KABI_RESERVE)
-	u64 susfs_mnt_id_backup;
-#endif
 """,
-    "vfsmount SUSFS KABI field",
+    "upstream vfsmount SUSFS KABI field",
 )
-write(mount_path, mount)
 
 
 for reject in EXPECTED_REJECTS:
