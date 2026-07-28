@@ -56,6 +56,9 @@ jobs:
           remove-haskell: "true"
           remove-codeql: "true"
 
+      - name: Check out builder sources
+        uses: actions/checkout@v4
+
       - name: Configure Git
         run: |
           git config --global user.name "Chinohana"
@@ -149,17 +152,18 @@ jobs:
 
           cp ../susfs4ksu/kernel_patches/fs/* fs/
           cp ../susfs4ksu/kernel_patches/include/linux/* include/linux/
-          git apply --3way --whitespace=nowarn \
-            ../susfs4ksu/kernel_patches/50_add_susfs_in_kernel-4.19.patch
+          set +e
+          patch --batch --forward -p1 -F 3 \
+            < ../susfs4ksu/kernel_patches/50_add_susfs_in_kernel-4.19.patch
+          PATCH_STATUS=$?
+          set -e
 
-          if git -C KernelSU apply --check --whitespace=nowarn \
-            ../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch; then
-            git -C KernelSU apply --whitespace=nowarn \
-              ../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch
-          else
-            echo "SukiSU already carries an incompatible or equivalent SUSFS integration."
-            exit 1
-          fi
+          # LineageOS SM8250 backported fs_context into 4.19.  Apply the same
+          # upstream SUSFS semantics at the moved mount-allocation sites.
+          python3 "$GITHUB_WORKSPACE/scripts/apply_susfs_4_19_compat.py"
+          test "$PATCH_STATUS" -eq 1
+          test -z "$(find . -name '*.rej' -print -quit)"
+          git diff --check
 
       - name: Apply hide-stuff patch
         run: |

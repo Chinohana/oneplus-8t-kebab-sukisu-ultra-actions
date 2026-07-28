@@ -1,4 +1,4 @@
 *.zip
 *.img
+__pycache__/
 work/
-
