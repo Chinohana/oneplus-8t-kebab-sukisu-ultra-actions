@@ -34,6 +34,7 @@ env:
   EXPECTED_BASE_COMMIT: "4238ee49a84b"
   SUKISU_TAG: v3.1.4
   SUKISU_COMMIT: d7430733090f40870bc6d4b6b50ef08a91a92088
+  SUKISU_DROP_NONGKI_COMMIT: 898e9d4f8ca9b2f46b0c6b36b80a872b5b88d899
   CLANG_REVISION: clang-r563880
   CLANG_ARCHIVE_COMMIT: 6f88d37dd82ba741ca279539d44bb7da27ab1844
   ANYKERNEL_REPOSITORY: https://github.com/osm0sis/AnyKernel3.git
@@ -169,6 +170,17 @@ jobs:
           sed -i 's/[[:space:]]\+$//' \
             fs/namespace.c fs/overlayfs/readdir.c
           git diff --check
+
+          # Restore SukiSU's own last pre-drop SELinux policydb paths.  This
+          # vendor 4.19 tree uses the legacy flex_array policydb layout.
+          git -C KernelSU show --format= \
+            "$SUKISU_DROP_NONGKI_COMMIT" -- kernel/selinux/sepolicy.c \
+            | patch --batch --forward -R -p1 -F 0 -d KernelSU
+          grep -q \
+            '#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 7, 0)' \
+            KernelSU/kernel/selinux/sepolicy.c
+          grep -q 'type_val_to_struct_array' \
+            KernelSU/kernel/selinux/sepolicy.c
 
           set +e
           (
