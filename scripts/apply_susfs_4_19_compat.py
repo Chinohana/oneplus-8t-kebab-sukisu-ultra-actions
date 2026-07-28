@@ -231,9 +231,7 @@ task_mmu_path = "fs/proc/task_mmu.c"
 task_mmu = read(task_mmu_path)
 require_once(
     task_mmu,
-#ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
-#include <linux/susfs_def.h>
-""",
+    "CONFIG_KSU_SUSFS_SUS_KSTAT",
     "upstream task_mmu SUSFS include",
 )
 
@@ -242,8 +240,7 @@ mount_path = "include/linux/mount.h"
 mount = read(mount_path)
 require_once(
     mount,
-	ANDROID_KABI_USE(4, u64 susfs_mnt_id_backup);
-""",
+    "susfs_mnt_id_backup",
     "upstream vfsmount SUSFS KABI field",
 )
 
