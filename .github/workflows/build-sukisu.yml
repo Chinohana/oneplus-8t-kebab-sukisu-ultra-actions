@@ -200,13 +200,15 @@ jobs:
           python3 "$GITHUB_WORKSPACE/scripts/apply_sukisu_v314_susfs_compat.py"
           test "$KSU_PATCH_STATUS" -eq 1
           test -z "$(find KernelSU -name '*.rej' -print -quit)"
-          grep -q "^static inline void put_cred" include/linux/cred.h
-          grep -q "^static bool is_mnt_ns_file" fs/namespace.c
-          grep -q "^extern void __init mnt_init" fs/internal.h
+          grep -q "get_cred_rcu" include/linux/cred.h
+          grep -Eq "^int path_umount" fs/namespace.c
+          grep -Eq "^int path_umount" fs/internal.h
+          grep -q "return ksu_is_manager();" KernelSU/kernel/kpm/compact.c
           while IFS= read -r -d '' path; do
             perl -0pi -e 's/[ \t]+$//mg; s/\n+\z/\n/' "KernelSU/$path"
           done < <(git -C KernelSU diff --name-only -z)
           git -C KernelSU diff --check
+          git diff --check
 
       - name: Apply hide-stuff patch
         run: |

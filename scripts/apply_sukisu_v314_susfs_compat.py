@@ -11,6 +11,7 @@ from pathlib import Path
 
 
 ROOT = Path.cwd() / "KernelSU"
+KERNEL_ROOT = ROOT.parent
 EXPECTED_REJECTS = {
     Path("kernel/Makefile.rej"),
     Path("kernel/core_hook.c.rej"),
@@ -18,11 +19,19 @@ EXPECTED_REJECTS = {
 
 
 def read(path: str) -> str:
-    return (ROOT / path).read_text()
+    return (ROOT / path).read_text(encoding="utf-8")
 
 
 def write(path: str, content: str) -> None:
-    (ROOT / path).write_text(content)
+    (ROOT / path).write_text(content, encoding="utf-8")
+
+
+def read_kernel(path: str) -> str:
+    return (KERNEL_ROOT / path).read_text(encoding="utf-8")
+
+
+def write_kernel(path: str, content: str) -> None:
+    (KERNEL_ROOT / path).write_text(content, encoding="utf-8")
 
 
 def replace_once(content: str, old: str, new: str, label: str) -> str:
@@ -30,6 +39,11 @@ def replace_once(content: str, old: str, new: str, label: str) -> str:
     if count != 1:
         raise RuntimeError(f"{label}: expected exactly one match, found {count}")
     return content.replace(old, new, 1)
+
+
+def require_absent(content: str, needle: str, label: str) -> None:
+    if needle in content:
+        raise RuntimeError(f"{label}: target is already present")
 
 
 rejects = {
@@ -140,6 +154,95 @@ makefile = replace_once(
     "KernelSU Makefile SUSFS flags",
 )
 write(makefile_path, makefile)
+
+
+# The official legacy patch performs these API backports from KernelSU's
+# Makefile.  Apply them before parallel compilation so namespace.o cannot race
+# the Makefile's source mutation.
+cred_path = "include/linux/cred.h"
+cred = read_kernel(cred_path)
+require_absent(cred, "get_cred_rcu", "get_cred_rcu backport")
+cred_marker = "static inline void put_cred(const struct cred *_cred)\n"
+cred_backport = """\
+static inline const struct cred *get_cred_rcu(const struct cred *cred)
+{
+	struct cred *nonconst_cred = (struct cred *)cred;
+
+	if (!cred)
+		return NULL;
+	if (!atomic_inc_not_zero(&nonconst_cred->usage))
+		return NULL;
+	validate_creds(cred);
+	return cred;
+}
+
+"""
+cred = replace_once(
+    cred,
+    cred_marker,
+    cred_backport + cred_marker,
+    "get_cred_rcu insertion point",
+)
+write_kernel(cred_path, cred)
+
+namespace_path = "fs/namespace.c"
+namespace = read_kernel(namespace_path)
+require_absent(namespace, "int path_umount(", "path_umount backport")
+require_absent(namespace, "static int can_umount(", "can_umount backport")
+namespace_marker = "static bool is_mnt_ns_file(struct dentry *dentry)\n"
+namespace_backport = """\
+static int can_umount(const struct path *path, int flags)
+{
+	struct mount *mnt = real_mount(path->mnt);
+
+	if (flags & ~(MNT_FORCE | MNT_DETACH | MNT_EXPIRE | UMOUNT_NOFOLLOW))
+		return -EINVAL;
+	if (!may_mount())
+		return -EPERM;
+	if (path->dentry != path->mnt->mnt_root)
+		return -EINVAL;
+	if (!check_mnt(mnt))
+		return -EINVAL;
+	if (mnt->mnt.mnt_flags & MNT_LOCKED)
+		return -EINVAL;
+	if (flags & MNT_FORCE && !capable(CAP_SYS_ADMIN))
+		return -EPERM;
+	return 0;
+}
+
+int path_umount(struct path *path, int flags)
+{
+	struct mount *mnt = real_mount(path->mnt);
+	int ret;
+
+	ret = can_umount(path, flags);
+	if (!ret)
+		ret = do_umount(mnt, flags);
+	dput(path->dentry);
+	mntput_no_expire(mnt);
+	return ret;
+}
+
+"""
+namespace = replace_once(
+    namespace,
+    namespace_marker,
+    namespace_backport + namespace_marker,
+    "mount API insertion point",
+)
+write_kernel(namespace_path, namespace)
+
+internal_path = "fs/internal.h"
+internal = read_kernel(internal_path)
+require_absent(internal, "int path_umount(", "path_umount declaration")
+internal_marker = "extern void __init mnt_init(void);\n"
+internal = replace_once(
+    internal,
+    internal_marker,
+    internal_marker + "int path_umount(struct path *path, int flags);\n",
+    "path_umount declaration point",
+)
+write_kernel(internal_path, internal)
 
 
 core_path = "kernel/core_hook.c"
@@ -390,6 +493,17 @@ MODULE_IMPORT_NS(VFS_internal_I_am_really_a_filesystem_and_am_NOT_a_driver);
     "Linux 4.19 module namespace compatibility",
 )
 write(ksu_path, ksu)
+
+
+kpm_path = "kernel/kpm/compact.c"
+kpm = read(kpm_path)
+kpm = replace_once(
+    kpm,
+    "    return is_manager();\n",
+    "    return ksu_is_manager();\n",
+    "KPM manager symbol rename",
+)
+write(kpm_path, kpm)
 
 
 for reject in EXPECTED_REJECTS:
