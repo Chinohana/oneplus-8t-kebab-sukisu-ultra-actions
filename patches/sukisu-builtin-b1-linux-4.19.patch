@@ -32,3 +32,22 @@ index a18707b..00ad390 100644
              apply_kernelsu_rules();
              cache_sid();
              setup_ksu_cred();
+diff --git a/kernel/sulog/event.c b/kernel/sulog/event.c
+index 144b375..15c4b9a 100644
+--- a/kernel/sulog/event.c
++++ b/kernel/sulog/event.c
+@@ -373,9 +373,14 @@ static struct ksu_sulog_pending_event *ksu_sulog_capture_grant_root(const struct
+     struct ksu_sulog_event *event;
+ 
+     // This is actually stupid fix
++#ifdef CONFIG_KSU_SUSFS
+     #define USER_ARG_NULL user_arg_null_ptr()
++#else
++    #define USER_ARG_NULL (*user_arg_null_ptr())
++#endif
+ 
+     pending = ksu_sulog_capture(KSU_SULOG_EVENT_IOCTL_GRANT_ROOT, NULL, USER_ARG_NULL, gfp);
++    #undef USER_ARG_NULL
+     if (!pending)
+         return NULL;
+ 
