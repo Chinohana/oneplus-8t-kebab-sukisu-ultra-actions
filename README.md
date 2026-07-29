@@ -20,7 +20,8 @@ The workflow structure follows
 2. configure Git and install dependencies;
 3. initialize and sync kernel sources;
 4. remove the `-dirty` suffix;
-5. integrate a pinned commit from SukiSU Ultra's official `builtin` branch;
+5. integrate the pinned current SukiSU Ultra release through the official
+   non-GKI kprobe path;
 6. enable SukiSU and optional KPM configuration;
 7. reject the incompatible legacy SUSFS 1.5.5 combination;
 8. build the kernel;
@@ -42,16 +43,17 @@ device choices, GKI patches and Bazel build with the exact LineageOS SM8250
 `vendor/oplus.config`, and the Android Clang revision observed on the target
 device.
 
-The workflow pins SukiSU Ultra's official `builtin` branch at
-`b1d534bc41941b2c818d7a1a1dac341e4aabfc2d`. This uses the 4.x driver ABI
-required by the current v4.1.3 manager. The previous v3.1.4 integration was
-not compatible with that manager and is no longer used.
+The workflow pins the official SukiSU Ultra `v4.1.3` release at
+`0ca744a88835144c58d8256ebb32c279edabfcde` and enables its documented
+non-GKI kprobe path. This uses the 4.x driver ABI required by the current
+v4.1.3 manager. The previous v3.1.4 integration was not compatible with that
+manager and is no longer used.
 
 SUSFS is deliberately disabled in this baseline. The official
-`kernel-4.19` SUSFS branch exposes the legacy 1.5.5 interface, while current
-SukiSU `builtin` expects the newer SUSFS interface. Mixing those generations
-is blocked explicitly. First establish a clean current SukiSU/KPM build; a
-separate verified backport is required before enabling SUSFS.
+`kernel-4.19` SUSFS branch exposes the legacy 1.5.5 interface. Mixing it into
+this 4.x baseline is blocked explicitly. First establish a clean current
+SukiSU/KPM build; a separate verified backport is required before enabling
+SUSFS.
 
 ## Safety
 

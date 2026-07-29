@@ -32,8 +32,8 @@ env:
   KERNEL_DEFCONFIG: vendor/kona-perf_defconfig
   OPLUS_CONFIG: vendor/oplus.config
   EXPECTED_BASE_COMMIT: "4238ee49a84b"
-  SUKISU_BRANCH: builtin
-  SUKISU_COMMIT: b1d534bc41941b2c818d7a1a1dac341e4aabfc2d
+  SUKISU_TAG: v4.1.3
+  SUKISU_COMMIT: 0ca744a88835144c58d8256ebb32c279edabfcde
   CLANG_REVISION: clang-r563880
   CLANG_ARCHIVE_COMMIT: 6f88d37dd82ba741ca279539d44bb7da27ab1844
   ANYKERNEL_REPOSITORY: https://github.com/osm0sis/AnyKernel3.git
@@ -130,7 +130,7 @@ jobs:
           sed -i 's/ -dirty//g' scripts/setlocalversion
           sed -i '$i res=$(echo "$res" | sed '\''s/-dirty//g'\'')' scripts/setlocalversion
 
-      - name: Add pinned current SukiSU Ultra builtin driver
+      - name: Add pinned current SukiSU Ultra release driver
         run: |
           set -euo pipefail
           cd kernel_workspace
@@ -139,7 +139,7 @@ jobs:
             | bash -s "$SUKISU_COMMIT"
           test -d KernelSU
           test "$(git -C KernelSU rev-parse HEAD)" = "$SUKISU_COMMIT"
-          test "$(git -C KernelSU branch -r --contains HEAD | grep -c 'origin/builtin')" -ge 1
+          test "$(git -C KernelSU rev-parse "$SUKISU_TAG^{commit}")" = "$SUKISU_COMMIT"
           MAIN_COUNT="$(git -C KernelSU rev-list --count main)"
           KSU_VERSION="$((40000 + MAIN_COUNT - 2815))"
           test "$KSU_VERSION" -ge 40000
@@ -165,6 +165,7 @@ jobs:
             out/.config "arch/arm64/configs/$OPLUS_CONFIG"
 
           scripts/config --file out/.config -e KSU
+          scripts/config --file out/.config -e KPROBES
           scripts/config --file out/.config -e KALLSYMS
           scripts/config --file out/.config -e KALLSYMS_ALL
 
@@ -195,9 +196,10 @@ jobs:
           make O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 olddefconfig
 
           grep -E \
-            'CONFIG_(KSU|KPM|KALLSYMS|KALLSYMS_ALL|KSU_SUSFS)(=|_)' \
+            'CONFIG_(KSU|KPM|KPROBES|KALLSYMS|KALLSYMS_ALL|KSU_SUSFS)(=|_)' \
             out/.config | sort
           grep -q '^CONFIG_KSU=y$' out/.config
+          grep -q '^CONFIG_KPROBES=y$' out/.config
           grep -q '^CONFIG_KALLSYMS=y$' out/.config
           grep -q '^CONFIG_KALLSYMS_ALL=y$' out/.config
           if [ "${{ inputs.kpm }}" = "true" ]; then
