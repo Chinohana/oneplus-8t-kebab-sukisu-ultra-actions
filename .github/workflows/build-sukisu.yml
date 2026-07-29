@@ -14,9 +14,9 @@ on:
         default: false
         type: boolean
       kpm:
-        description: "Enable and apply KPM"
+        description: "KPM (blocked pending a separately audited 4.19 backport)"
         required: true
-        default: true
+        default: false
         type: boolean
 
 permissions:
@@ -152,6 +152,12 @@ jobs:
         if: ${{ inputs.susfs }}
         run: |
           echo "::error::SUSFS kernel-4.19 is the legacy 1.5.5 interface and cannot be mixed with SukiSU 4.x."
+          exit 1
+
+      - name: Reject unaudited KPM 4.19 backport
+        if: ${{ inputs.kpm }}
+        run: |
+          echo "::error::SukiSU v4.1.3 KPM uses the newer two-argument access_ok API and requires a separately audited 4.19 backport."
           exit 1
 
       - name: Add configuration settings

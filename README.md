@@ -22,8 +22,8 @@ The workflow structure follows
 4. remove the `-dirty` suffix;
 5. integrate the pinned current SukiSU Ultra release through the official
    non-GKI kprobe path;
-6. enable SukiSU and optional KPM configuration;
-7. reject the incompatible legacy SUSFS 1.5.5 combination;
+6. enable the SukiSU root baseline;
+7. reject incompatible, unaudited SUSFS and KPM combinations;
 8. build the kernel;
 9. apply `patch_linux` for KPM;
 10. package with AnyKernel3;
@@ -52,8 +52,13 @@ manager and is no longer used.
 SUSFS is deliberately disabled in this baseline. The official
 `kernel-4.19` SUSFS branch exposes the legacy 1.5.5 interface. Mixing it into
 this 4.x baseline is blocked explicitly. First establish a clean current
-SukiSU/KPM build; a separate verified backport is required before enabling
+SukiSU root build; a separate verified backport is required before enabling
 SUSFS.
+
+KPM is also disabled in this baseline. SukiSU v4.1.3's KPM code uses the
+newer two-argument `access_ok` API, while this arm64 4.19 kernel uses the
+legacy three-argument form. KPM needs a separate code and user-pointer audit
+before it is enabled; it is not required for normal SukiSU root management.
 
 ## Safety
 
