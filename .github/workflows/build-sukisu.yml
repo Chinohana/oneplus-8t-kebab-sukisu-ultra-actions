@@ -9,9 +9,9 @@ on:
         default: "4238ee49a84b"
         type: string
       susfs:
-        description: "Apply the official SUSFS kernel-4.19 patches"
+        description: "Legacy SUSFS 1.5.5 (blocked with the current SukiSU 4.x baseline)"
         required: true
-        default: true
+        default: false
         type: boolean
       kpm:
         description: "Enable and apply KPM"
@@ -32,15 +32,11 @@ env:
   KERNEL_DEFCONFIG: vendor/kona-perf_defconfig
   OPLUS_CONFIG: vendor/oplus.config
   EXPECTED_BASE_COMMIT: "4238ee49a84b"
-  SUKISU_TAG: v3.1.4
-  SUKISU_COMMIT: d7430733090f40870bc6d4b6b50ef08a91a92088
-  EXPECTED_KSU_VERSION: "12960"
-  SUKISU_DROP_NONGKI_COMMIT: 898e9d4f8ca9b2f46b0c6b36b80a872b5b88d899
+  SUKISU_BRANCH: builtin
+  SUKISU_COMMIT: b1d534bc41941b2c818d7a1a1dac341e4aabfc2d
   CLANG_REVISION: clang-r563880
   CLANG_ARCHIVE_COMMIT: 6f88d37dd82ba741ca279539d44bb7da27ab1844
   ANYKERNEL_REPOSITORY: https://github.com/osm0sis/AnyKernel3.git
-  SUSFS_REPOSITORY: https://gitlab.com/simonpunk/susfs4ksu.git
-  SUSFS_BRANCH: kernel-4.19
 
 jobs:
   build:
@@ -134,98 +130,29 @@ jobs:
           sed -i 's/ -dirty//g' scripts/setlocalversion
           sed -i '$i res=$(echo "$res" | sed '\''s/-dirty//g'\'')' scripts/setlocalversion
 
-      - name: Add pinned SukiSU Ultra for legacy SUSFS
+      - name: Add pinned current SukiSU Ultra builtin driver
         run: |
           set -euo pipefail
           cd kernel_workspace
           curl -LSs \
             "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" \
-            | bash -s "$SUKISU_TAG"
+            | bash -s "$SUKISU_COMMIT"
           test -d KernelSU
           test "$(git -C KernelSU rev-parse HEAD)" = "$SUKISU_COMMIT"
-          # v3.1.4's kernel Makefile derives KSU_VERSION from the local `main`
-          # ref, not HEAD. setup.sh keeps the remote's newer main ref even
-          # after checking out this tag, which mislabels the legacy driver as
-          # 14277 and makes managers select incompatible newer interfaces.
-          git -C KernelSU branch -f main "$SUKISU_COMMIT"
-          test "$(git -C KernelSU rev-parse main)" = "$SUKISU_COMMIT"
-          KSU_VERSION="$(($(git -C KernelSU rev-list --count main) + 10606))"
-          test "$KSU_VERSION" = "$EXPECTED_KSU_VERSION"
+          test "$(git -C KernelSU branch -r --contains HEAD | grep -c 'origin/builtin')" -ge 1
+          MAIN_COUNT="$(git -C KernelSU rev-list --count main)"
+          KSU_VERSION="$((40000 + MAIN_COUNT - 2815))"
+          test "$KSU_VERSION" -ge 40000
+          test "$KSU_VERSION" -lt 50000
           echo "KSU_VERSION=$KSU_VERSION" >> "$GITHUB_ENV"
           echo "SukiSU commit: $(git -C KernelSU rev-parse HEAD)"
           echo "SukiSU driver version: $KSU_VERSION"
 
-      - name: Apply SUSFS 4.19 patches
+      - name: Reject incompatible legacy SUSFS mix
         if: ${{ inputs.susfs }}
         run: |
-          set -euo pipefail
-          git clone --depth=1 --branch "$SUSFS_BRANCH" \
-            "$SUSFS_REPOSITORY" susfs4ksu
-          cd kernel_workspace
-
-          cp ../susfs4ksu/kernel_patches/fs/* fs/
-          cp ../susfs4ksu/kernel_patches/include/linux/* include/linux/
-          set +e
-          patch --batch --forward -p1 -F 3 \
-            < ../susfs4ksu/kernel_patches/50_add_susfs_in_kernel-4.19.patch
-          PATCH_STATUS=$?
-          set -e
-
-          # LineageOS SM8250 backported fs_context into 4.19.  Apply the same
-          # upstream SUSFS semantics at the moved mount-allocation sites.
-          python3 "$GITHUB_WORKSPACE/scripts/apply_susfs_4_19_compat.py"
-          test "$PATCH_STATUS" -eq 1
-          test -z "$(find . -name '*.rej' -print -quit)"
-          sed -i 's/[[:space:]]\+$//' \
-            fs/namespace.c fs/overlayfs/readdir.c
-          git diff --check
-
-          # Restore SukiSU's own last pre-drop SELinux paths.  This vendor
-          # 4.19 tree uses selinux_state.ss and the flex_array policydb.
-          git -C KernelSU show --format= \
-            "$SUKISU_DROP_NONGKI_COMMIT" -- \
-            kernel/selinux/sepolicy.c \
-            kernel/selinux/rules.c \
-            kernel/selinux/selinux.c \
-            kernel/selinux/selinux.h \
-            | patch --batch --forward -R -p1 -F 0 -d KernelSU
-          grep -q \
-            '#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 7, 0)' \
-            KernelSU/kernel/selinux/sepolicy.c
-          grep -q 'type_val_to_struct_array' \
-            KernelSU/kernel/selinux/sepolicy.c
-          grep -q 'KSU_COMPAT_USE_SELINUX_STATE' \
-            KernelSU/kernel/selinux/selinux.h
-
-          set +e
-          (
-            cd KernelSU
-            patch --batch --forward -p1 -F 3 \
-              < ../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch
-          )
-          KSU_PATCH_STATUS=$?
-          set -e
-          find KernelSU -name '*.rej' -print
-          python3 "$GITHUB_WORKSPACE/scripts/apply_sukisu_v314_susfs_compat.py"
-          test "$KSU_PATCH_STATUS" -eq 1
-          test -z "$(find KernelSU -name '*.rej' -print -quit)"
-          grep -q "get_cred_rcu" include/linux/cred.h
-          grep -Eq "^int path_umount" fs/namespace.c
-          grep -Eq "^int path_umount" fs/internal.h
-          grep -q "return ksu_is_manager();" KernelSU/kernel/kpm/compact.c
-          while IFS= read -r -d '' path; do
-            perl -0pi -e 's/[ \t]+$//mg; s/\n+\z/\n/' "KernelSU/$path"
-          done < <(git -C KernelSU diff --name-only -z)
-          git -C KernelSU diff --check
-          git diff --check
-
-      - name: Apply hide-stuff patch
-        run: |
-          set -euo pipefail
-          git clone --depth=1 https://github.com/ShirkNeko/SukiSU_patch.git sukisu_patch
-          cd kernel_workspace
-          cp ../sukisu_patch/69_hide_stuff.patch .
-          patch --batch --forward -p1 -F 3 < 69_hide_stuff.patch
+          echo "::error::SUSFS kernel-4.19 is the legacy 1.5.5 interface and cannot be mixed with SukiSU 4.x."
+          exit 1
 
       - name: Add configuration settings
         run: |
@@ -355,9 +282,6 @@ jobs:
             echo "kernel_commit=$(git -C kernel_workspace rev-parse HEAD)"
             echo "sukisu_commit=$(git -C kernel_workspace/KernelSU rev-parse HEAD)"
             echo "susfs=${{ inputs.susfs }}"
-            if [ "${{ inputs.susfs }}" = "true" ]; then
-              echo "susfs_commit=$(git -C susfs4ksu rev-parse HEAD)"
-            fi
             echo "kpm=${{ inputs.kpm }}"
             echo "clang=$("$GITHUB_WORKSPACE/toolchains/clang/bin/clang" --version | head -n1)"
             echo "package=${PACKAGE_NAME}.zip"

@@ -20,9 +20,9 @@ The workflow structure follows
 2. configure Git and install dependencies;
 3. initialize and sync kernel sources;
 4. remove the `-dirty` suffix;
-5. integrate the pinned SukiSU Ultra legacy-compatible tag;
-6. apply SUSFS and hide-stuff patches;
-7. enable SukiSU, KPM and SUSFS configuration;
+5. integrate a pinned commit from SukiSU Ultra's official `builtin` branch;
+6. enable SukiSU and optional KPM configuration;
+7. reject the incompatible legacy SUSFS 1.5.5 combination;
 8. build the kernel;
 9. apply `patch_linux` for KPM;
 10. package with AnyKernel3;
@@ -42,21 +42,16 @@ device choices, GKI patches and Bazel build with the exact LineageOS SM8250
 `vendor/oplus.config`, and the Android Clang revision observed on the target
 device.
 
-SUSFS `kernel-4.19` is the official v1.5.5-era branch. The workflow pins
-SukiSU Ultra `v3.1.4` (`d7430733090f40870bc6d4b6b50ef08a91a92088`), whose
-official documentation still used manual SUSFS integration for non-GKI
-kernels. Current `builtin` expects the incompatible SUSFS v2.2.0 interface.
-Because this vendor kernel retains the legacy SELinux `flex_array` policydb
-layout and `selinux_state.ss`, the workflow also reverses only the SELinux
-portions of SukiSU's own `898e9d4f` non-GKI removal commit before applying
-SUSFS. This restores the upstream-maintained 4.x SELinux paths without
-replacing SukiSU v3.1.4.
+The workflow pins SukiSU Ultra's official `builtin` branch at
+`b1d534bc41941b2c818d7a1a1dac341e4aabfc2d`. This uses the 4.x driver ABI
+required by the current v4.1.3 manager. The previous v3.1.4 integration was
+not compatible with that manager and is no longer used.
 
-The workflow also pins the local `KernelSU/main` ref to that same v3.1.4
-commit. SukiSU v3.1.4 derives its in-kernel version from `main` rather than
-`HEAD`; leaving `main` at a newer remote commit mislabels the legacy driver
-and can make a manager select incompatible interfaces. The build is required
-to resolve the driver version to the official v3.1.4 value, `12960`.
+SUSFS is deliberately disabled in this baseline. The official
+`kernel-4.19` SUSFS branch exposes the legacy 1.5.5 interface, while current
+SukiSU `builtin` expects the newer SUSFS interface. Mixing those generations
+is blocked explicitly. First establish a clean current SukiSU/KPM build; a
+separate verified backport is required before enabling SUSFS.
 
 ## Safety
 
