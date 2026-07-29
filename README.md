@@ -16,7 +16,7 @@ image locally avoids mixing in a ramdisk or DTB from a different ROM build.
 The workflow structure follows
 [`ShirkNeko/Action_OnePlus_MKSU_SUSFS`](https://github.com/ShirkNeko/Action_OnePlus_MKSU_SUSFS/blob/main/.github/workflows/Build-SukiSU.yml):
 
-1. maximize runner storage;
+1. verify sufficient native runner storage;
 2. configure Git and install dependencies;
 3. initialize and sync kernel sources;
 4. remove the `-dirty` suffix;
