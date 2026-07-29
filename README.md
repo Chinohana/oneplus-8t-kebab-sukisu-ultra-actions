@@ -49,10 +49,12 @@ non-GKI kprobe path. This uses the 4.x driver ABI required by the current
 v4.1.3 manager. The previous v3.1.4 integration was not compatible with that
 manager and is no longer used.
 
-Linux 4.19 predates kernel symbol namespaces, so the workflow guards
-SukiSU's `MODULE_IMPORT_NS` declaration with `#ifdef MODULE_IMPORT_NS`.
-The declaration remains unchanged on kernels that provide it and becomes a
-no-op on this 4.19 target.
+Linux 4.19 predates kernel symbol namespaces, `file_operations.iopoll`
+(Linux 5.1), and `file_operations.remap_file_range` (Linux 4.20). The
+auditable patch in `patches/sukisu-v4.1.3-linux-4.19.patch` adds only
+compile-time version guards around those unavailable interfaces. Existing
+4.19 operations, including `copy_file_range`, remain unchanged. No ABI or
+reported SukiSU version is forged.
 
 SUSFS is deliberately disabled in this baseline. The official
 `kernel-4.19` SUSFS branch exposes the legacy 1.5.5 interface. Mixing it into
