@@ -34,6 +34,7 @@ env:
   EXPECTED_BASE_COMMIT: "4238ee49a84b"
   SUKISU_TAG: v3.1.4
   SUKISU_COMMIT: d7430733090f40870bc6d4b6b50ef08a91a92088
+  EXPECTED_KSU_VERSION: "12960"
   SUKISU_DROP_NONGKI_COMMIT: 898e9d4f8ca9b2f46b0c6b36b80a872b5b88d899
   CLANG_REVISION: clang-r563880
   CLANG_ARCHIVE_COMMIT: 6f88d37dd82ba741ca279539d44bb7da27ab1844
@@ -142,9 +143,17 @@ jobs:
             | bash -s "$SUKISU_TAG"
           test -d KernelSU
           test "$(git -C KernelSU rev-parse HEAD)" = "$SUKISU_COMMIT"
-          KSU_VERSION="$(($(git -C KernelSU rev-list --count HEAD) + 10606))"
+          # v3.1.4's kernel Makefile derives KSU_VERSION from the local `main`
+          # ref, not HEAD. setup.sh keeps the remote's newer main ref even
+          # after checking out this tag, which mislabels the legacy driver as
+          # 14277 and makes managers select incompatible newer interfaces.
+          git -C KernelSU branch -f main "$SUKISU_COMMIT"
+          test "$(git -C KernelSU rev-parse main)" = "$SUKISU_COMMIT"
+          KSU_VERSION="$(($(git -C KernelSU rev-list --count main) + 10606))"
+          test "$KSU_VERSION" = "$EXPECTED_KSU_VERSION"
           echo "KSU_VERSION=$KSU_VERSION" >> "$GITHUB_ENV"
           echo "SukiSU commit: $(git -C KernelSU rev-parse HEAD)"
+          echo "SukiSU driver version: $KSU_VERSION"
 
       - name: Apply SUSFS 4.19 patches
         if: ${{ inputs.susfs }}

@@ -52,6 +52,12 @@ portions of SukiSU's own `898e9d4f` non-GKI removal commit before applying
 SUSFS. This restores the upstream-maintained 4.x SELinux paths without
 replacing SukiSU v3.1.4.
 
+The workflow also pins the local `KernelSU/main` ref to that same v3.1.4
+commit. SukiSU v3.1.4 derives its in-kernel version from `main` rather than
+`HEAD`; leaving `main` at a newer remote commit mislabels the legacy driver
+and can make a manager select incompatible interfaces. The build is required
+to resolve the driver version to the official v3.1.4 value, `12960`.
+
 ## Safety
 
 - Do not use this artifact on another device or ROM/kernel revision.
