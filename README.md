@@ -2,14 +2,11 @@
 
 ## Current status
 
-There is currently **no flashable v4.1.3 artifact** from this workflow.
-Linux 4.19 lacks the seccomp constant-action cache expected by the current
-SukiSU driver. This is not a missing constant: the target kernel's
-`struct seccomp_filter` has a different layout and no action bitmap.
-Completing this port safely requires a separately reviewed seccomp-cache
-backport; simply defining `SECCOMP_ARCH_NATIVE_NR` would risk an out-of-layout
-kernel write. The workflow therefore remains an investigation baseline, not a
-release builder.
+There is currently **no tested flashable artifact** from this revised workflow.
+The previous `main + kprobe` experiment reached an unsafe Linux 4.19 seccomp
+layout mismatch and has been abandoned. This revision instead follows the
+official built-in, manual-hook route for non-GKI kernels. A cloud build and
+offline artifact review must pass before any ZIP is considered for testing.
 
 This public repository builds a device-specific SukiSU Ultra kernel for:
 
@@ -31,14 +28,13 @@ The workflow structure follows
 2. configure Git and install dependencies;
 3. initialize and sync kernel sources;
 4. remove the `-dirty` suffix;
-5. integrate the pinned current SukiSU Ultra release through the official
-   non-GKI kprobe path;
-6. enable the SukiSU root baseline;
-7. reject incompatible, unaudited SUSFS and KPM combinations;
-8. build the kernel;
-9. apply `patch_linux` for KPM;
-10. package with AnyKernel3;
-11. upload the result as an Actions artifact.
+5. integrate a pinned commit from SukiSU Ultra's official `builtin` branch;
+6. apply the four documented non-GKI manual hooks plus the current reboot
+   bootstrap hook;
+7. force SUSFS, KPM and kprobes off and assert the final configuration;
+8. build the kernel and verify the manual-hook symbols;
+9. package with a pinned AnyKernel3 commit;
+10. record full provenance and upload the result as an Actions artifact.
 
 The exact upstream file reviewed when this repository was created contained 442
 lines and had SHA-256:
@@ -54,29 +50,32 @@ device choices, GKI patches and Bazel build with the exact LineageOS SM8250
 `vendor/oplus.config`, and the Android Clang revision observed on the target
 device.
 
-The workflow pins the official SukiSU Ultra `v4.1.3` release at
-`0ca744a88835144c58d8256ebb32c279edabfcde` and enables its documented
-non-GKI kprobe path. This uses the 4.x driver ABI required by the current
-v4.1.3 manager. The previous v3.1.4 integration was not compatible with that
-manager and is no longer used.
+The workflow pins the official SukiSU Ultra `builtin` branch at
+`b1d534bc41941b2c818d7a1a1dac341e4aabfc2d`. This branch uses the 4.x driver
+ABI required by the v4.1.3 manager and already contains the old-kernel
+`seccomp`, `iopoll` and `remap_file_range` compatibility paths missing from
+the abandoned `main` experiment. No version number or ABI is forged.
 
-Linux 4.19 predates kernel symbol namespaces, `file_operations.iopoll`
-(Linux 5.1), and `file_operations.remap_file_range` (Linux 4.20). The
-auditable patch in `patches/sukisu-v4.1.3-linux-4.19.patch` adds only
-compile-time version guards around those unavailable interfaces. Existing
-4.19 operations, including `copy_file_range`, remain unchanged. No ABI or
-reported SukiSU version is forged.
+The target-kernel patch in
+`patches/sukisu-builtin-manual-hooks-sm8250-4.19.patch` is tied to the exact
+LineageOS commit and adds calls at `do_execveat_common`, `do_faccessat`,
+`vfs_read`, `vfs_statx`, and the reboot syscall bootstrap. The small driver
+patch in `patches/sukisu-builtin-b1-linux-4.19.patch` only prevents the
+current built-in branch from calling its 5.10+ SELinux-hide feature on 4.19.
+SukiSU's own input handler provides Safe Mode; no obsolete input hook is
+added.
 
-SUSFS is deliberately disabled in this baseline. The official
-`kernel-4.19` SUSFS branch exposes the legacy 1.5.5 interface. Mixing it into
-this 4.x baseline is blocked explicitly. First establish a clean current
-SukiSU root build; a separate verified backport is required before enabling
-SUSFS.
+SUSFS is deliberately and unconditionally disabled. The official
+`kernel-4.19` SUSFS branch exposes the legacy 1.5.5 interface, while this
+SukiSU generation expects a newer interface. The built-in branch defaults
+SUSFS to enabled, so the workflow explicitly writes
+`CONFIG_KSU_SUSFS=n` and fails if it is re-enabled.
 
-KPM is also disabled in this baseline. SukiSU v4.1.3's KPM code uses the
-newer two-argument `access_ok` API, while this arm64 4.19 kernel uses the
-legacy three-argument form. KPM needs a separate code and user-pointer audit
-before it is enabled; it is not required for normal SukiSU root management.
+KPM is also unconditionally disabled. Its current code uses the newer
+two-argument `access_ok` API, while this arm64 4.19 kernel uses the legacy
+three-argument form. KPM is not required for normal SukiSU root management.
+The manual integration also explicitly disables kprobes after the vendor
+configuration is merged.
 
 ## Safety
 

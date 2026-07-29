@@ -2,22 +2,6 @@ name: Build kebab LineageOS 23.2 SukiSU Ultra
 
 on:
   workflow_dispatch:
-    inputs:
-      kernel_commit:
-        description: "Exact LineageOS kernel commit"
-        required: true
-        default: "4238ee49a84b"
-        type: string
-      susfs:
-        description: "Legacy SUSFS 1.5.5 (blocked with the current SukiSU 4.x baseline)"
-        required: true
-        default: false
-        type: boolean
-      kpm:
-        description: "KPM (blocked pending a separately audited 4.19 backport)"
-        required: true
-        default: false
-        type: boolean
 
 permissions:
   contents: read
@@ -31,12 +15,14 @@ env:
   KERNEL_BRANCH: lineage-23.2
   KERNEL_DEFCONFIG: vendor/kona-perf_defconfig
   OPLUS_CONFIG: vendor/oplus.config
-  EXPECTED_BASE_COMMIT: "4238ee49a84b"
-  SUKISU_TAG: v4.1.3
-  SUKISU_COMMIT: 0ca744a88835144c58d8256ebb32c279edabfcde
+  KERNEL_COMMIT: 4238ee49a84bd418c8515c297563bb29f95ab40b
+  KERNEL_COMMIT_SHORT: "4238ee49a84b"
+  SUKISU_BRANCH: builtin
+  SUKISU_COMMIT: b1d534bc41941b2c818d7a1a1dac341e4aabfc2d
   CLANG_REVISION: clang-r563880
   CLANG_ARCHIVE_COMMIT: 6f88d37dd82ba741ca279539d44bb7da27ab1844
   ANYKERNEL_REPOSITORY: https://github.com/osm0sis/AnyKernel3.git
+  ANYKERNEL_COMMIT: 1c9a500dd4aa8081952523126e97eb155aed941b
 
 jobs:
   build:
@@ -71,10 +57,13 @@ jobs:
           set -eux
           echo "Kernel repository: $KERNEL_REPOSITORY"
           echo "Kernel branch: $KERNEL_BRANCH"
-          echo "Kernel commit: ${{ inputs.kernel_commit }}"
+          echo "Kernel commit: $KERNEL_COMMIT"
           echo "Defconfig: $KERNEL_DEFCONFIG + $OPLUS_CONFIG"
-          echo "SUSFS: ${{ inputs.susfs }}"
-          echo "KPM: ${{ inputs.kpm }}"
+          echo "SukiSU branch: $SUKISU_BRANCH"
+          echo "SukiSU commit: $SUKISU_COMMIT"
+          echo "Hook: manual"
+          echo "SUSFS: n"
+          echo "KPM: n"
           echo "Toolchain: $CLANG_REVISION"
           df -h
           free -h
@@ -113,9 +102,10 @@ jobs:
           cd kernel_workspace
           git remote add origin "$KERNEL_REPOSITORY"
           git fetch --depth=256 origin "refs/heads/$KERNEL_BRANCH"
-          RESOLVED_COMMIT="$(git rev-parse --verify '${{ inputs.kernel_commit }}^{commit}')"
+          RESOLVED_COMMIT="$(git rev-parse --verify "$KERNEL_COMMIT^{commit}")"
           git checkout --detach "$RESOLVED_COMMIT"
-          test "$(git rev-parse --short=12 HEAD)" = "${{ inputs.kernel_commit }}"
+          test "$(git rev-parse HEAD)" = "$KERNEL_COMMIT"
+          test "$(git rev-parse --short=12 HEAD)" = "$KERNEL_COMMIT_SHORT"
           git log -1 --oneline
 
       - name: Force remove dirty suffix
@@ -125,16 +115,17 @@ jobs:
           sed -i 's/ -dirty//g' scripts/setlocalversion
           sed -i '$i res=$(echo "$res" | sed '\''s/-dirty//g'\'')' scripts/setlocalversion
 
-      - name: Add pinned current SukiSU Ultra release driver
+      - name: Add pinned official SukiSU Ultra builtin driver
         run: |
           set -euo pipefail
           cd kernel_workspace
           curl -LSs \
-            "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" \
+            "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/$SUKISU_COMMIT/kernel/setup.sh" \
             | bash -s "$SUKISU_COMMIT"
           test -d KernelSU
           test "$(git -C KernelSU rev-parse HEAD)" = "$SUKISU_COMMIT"
-          test "$(git -C KernelSU rev-parse "$SUKISU_TAG^{commit}")" = "$SUKISU_COMMIT"
+          test "$(git -C KernelSU rev-parse origin/$SUKISU_BRANCH)" = "$SUKISU_COMMIT"
+          test "$(git -C KernelSU branch -r --contains HEAD | grep -c "origin/$SUKISU_BRANCH")" -ge 1
           MAIN_COUNT="$(git -C KernelSU rev-list --count main)"
           KSU_VERSION="$((40000 + MAIN_COUNT - 2815))"
           test "$KSU_VERSION" -ge 40000
@@ -143,27 +134,31 @@ jobs:
           echo "SukiSU commit: $(git -C KernelSU rev-parse HEAD)"
           echo "SukiSU driver version: $KSU_VERSION"
 
-      - name: Apply audited SukiSU v4.1.3 compatibility guards for Linux 4.19
+      - name: Apply audited builtin compatibility guard for Linux 4.19
         run: |
           set -euo pipefail
           git -C kernel_workspace/KernelSU apply --check \
-            "$GITHUB_WORKSPACE/patches/sukisu-v4.1.3-linux-4.19.patch"
+            "$GITHUB_WORKSPACE/patches/sukisu-builtin-b1-linux-4.19.patch"
           git -C kernel_workspace/KernelSU apply \
-            "$GITHUB_WORKSPACE/patches/sukisu-v4.1.3-linux-4.19.patch"
+            "$GITHUB_WORKSPACE/patches/sukisu-builtin-b1-linux-4.19.patch"
           git -C kernel_workspace/KernelSU diff --check
           git -C kernel_workspace/KernelSU diff --stat
 
-      - name: Reject incompatible legacy SUSFS mix
-        if: ${{ inputs.susfs }}
+      - name: Apply pinned non-GKI manual hooks
         run: |
-          echo "::error::SUSFS kernel-4.19 is the legacy 1.5.5 interface and cannot be mixed with SukiSU 4.x."
-          exit 1
-
-      - name: Reject unaudited KPM 4.19 backport
-        if: ${{ inputs.kpm }}
-        run: |
-          echo "::error::SukiSU v4.1.3 KPM uses the newer two-argument access_ok API and requires a separately audited 4.19 backport."
-          exit 1
+          set -euo pipefail
+          cd kernel_workspace
+          git apply --check \
+            "$GITHUB_WORKSPACE/patches/sukisu-builtin-manual-hooks-sm8250-4.19.patch"
+          git apply \
+            "$GITHUB_WORKSPACE/patches/sukisu-builtin-manual-hooks-sm8250-4.19.patch"
+          git diff --check
+          git diff --stat
+          test "$(git grep -c 'ksu_handle_execveat(&fd' -- fs/exec.c | cut -d: -f2)" = 1
+          test "$(git grep -c 'ksu_handle_faccessat(&dfd' -- fs/open.c | cut -d: -f2)" = 1
+          test "$(git grep -c 'ksu_handle_vfs_read(&file' -- fs/read_write.c | cut -d: -f2)" = 1
+          test "$(git grep -c 'ksu_handle_stat(&dfd' -- fs/stat.c | cut -d: -f2)" = 1
+          test "$(git grep -c 'ksu_handle_sys_reboot(magic1' -- kernel/reboot.c | cut -d: -f2)" = 1
 
       - name: Add configuration settings
         run: |
@@ -176,33 +171,12 @@ jobs:
             out/.config "arch/arm64/configs/$OPLUS_CONFIG"
 
           scripts/config --file out/.config -e KSU
-          scripts/config --file out/.config -e KPROBES
+          scripts/config --file out/.config -d KPROBES
+          scripts/config --file out/.config -d KPROBE_EVENTS
+          scripts/config --file out/.config -d KPM
+          scripts/config --file out/.config -d KSU_SUSFS
           scripts/config --file out/.config -e KALLSYMS
           scripts/config --file out/.config -e KALLSYMS_ALL
-
-          if [ "${{ inputs.kpm }}" = "true" ]; then
-            scripts/config --file out/.config -e KPM
-          else
-            scripts/config --file out/.config -d KPM
-          fi
-
-          if [ "${{ inputs.susfs }}" = "true" ]; then
-            scripts/config --file out/.config -e KSU_SUSFS
-            scripts/config --file out/.config -e KSU_SUSFS_HAS_MAGIC_MOUNT
-            scripts/config --file out/.config -e KSU_SUSFS_SUS_PATH
-            scripts/config --file out/.config -e KSU_SUSFS_SUS_MOUNT
-            scripts/config --file out/.config -e KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT
-            scripts/config --file out/.config -e KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT
-            scripts/config --file out/.config -e KSU_SUSFS_SUS_KSTAT
-            scripts/config --file out/.config -d KSU_SUSFS_SUS_OVERLAYFS
-            scripts/config --file out/.config -e KSU_SUSFS_TRY_UMOUNT
-            scripts/config --file out/.config -e KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT
-            scripts/config --file out/.config -e KSU_SUSFS_SPOOF_UNAME
-            scripts/config --file out/.config -e KSU_SUSFS_ENABLE_LOG
-            scripts/config --file out/.config -e KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS
-            scripts/config --file out/.config -e KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG
-            scripts/config --file out/.config -e KSU_SUSFS_OPEN_REDIRECT
-          fi
 
           make O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 olddefconfig
 
@@ -210,14 +184,16 @@ jobs:
             'CONFIG_(KSU|KPM|KPROBES|KALLSYMS|KALLSYMS_ALL|KSU_SUSFS)(=|_)' \
             out/.config | sort
           grep -q '^CONFIG_KSU=y$' out/.config
-          grep -q '^CONFIG_KPROBES=y$' out/.config
           grep -q '^CONFIG_KALLSYMS=y$' out/.config
           grep -q '^CONFIG_KALLSYMS_ALL=y$' out/.config
-          if [ "${{ inputs.kpm }}" = "true" ]; then
-            grep -q '^CONFIG_KPM=y$' out/.config
-          fi
-          if [ "${{ inputs.susfs }}" = "true" ]; then
-            grep -q '^CONFIG_KSU_SUSFS=y$' out/.config
+          grep -q '^# CONFIG_KPROBES is not set$' out/.config
+          grep -q '^# CONFIG_KPM is not set$' out/.config
+          grep -q '^# CONFIG_KSU_SUSFS is not set$' out/.config
+          if grep -Eq \
+            '^CONFIG_(KPROBES|KPROBE_EVENTS|KPM|KSU_SUSFS(|_.*))=y$' \
+            out/.config; then
+            echo "::error::Unsafe kprobe, KPM, or SUSFS option was re-enabled."
+            exit 1
           fi
 
       - name: Build kernel
@@ -232,27 +208,24 @@ jobs:
             KCFLAGS="-Wno-error" \
             Image
           test -s out/arch/arm64/boot/Image
+          test -s out/vmlinux
+          grep -q ' kernelsu_init$' out/System.map
+          grep -q ' ksu_handle_execveat$' out/System.map
+          grep -q ' ksu_handle_faccessat$' out/System.map
+          grep -q ' ksu_handle_vfs_read$' out/System.map
+          grep -q ' ksu_handle_stat$' out/System.map
+          grep -q ' ksu_handle_sys_reboot$' out/System.map
           file out/arch/arm64/boot/Image
           ls -lh out/arch/arm64/boot/Image
-
-      - name: Apply KPM patch_linux
-        if: ${{ inputs.kpm }}
-        run: |
-          set -euo pipefail
-          cd kernel_workspace/out/arch/arm64/boot
-          curl -fLSs \
-            "https://raw.githubusercontent.com/ShirkNeko/SukiSU_patch/main/kpm/patch_linux" \
-            -o patch_linux
-          chmod +x patch_linux
-          ./patch_linux
-          test -s oImage
-          mv -f oImage Image
-          rm -f patch_linux
 
       - name: Make AnyKernel3
         run: |
           set -euo pipefail
-          git clone --depth=1 "$ANYKERNEL_REPOSITORY" AnyKernel3
+          git init AnyKernel3
+          git -C AnyKernel3 remote add origin "$ANYKERNEL_REPOSITORY"
+          git -C AnyKernel3 fetch --depth=1 origin "$ANYKERNEL_COMMIT"
+          git -C AnyKernel3 checkout --detach "$ANYKERNEL_COMMIT"
+          test "$(git -C AnyKernel3 rev-parse HEAD)" = "$ANYKERNEL_COMMIT"
           rm -rf AnyKernel3/.git
           cp kernel_workspace/out/arch/arm64/boot/Image AnyKernel3/Image
 
@@ -268,13 +241,7 @@ jobs:
           grep -q '^IS_SLOT_DEVICE=1;$' AnyKernel3/anykernel.sh
 
           rm -f AnyKernel3/README.md
-          PACKAGE_NAME="SukiSU-Ultra_kebab_LOS23.2_4.19_${{ inputs.kernel_commit }}_KSU${KSU_VERSION}"
-          if [ "${{ inputs.susfs }}" = "true" ]; then
-            PACKAGE_NAME="${PACKAGE_NAME}_SUSFS"
-          fi
-          if [ "${{ inputs.kpm }}" = "true" ]; then
-            PACKAGE_NAME="${PACKAGE_NAME}_KPM"
-          fi
+          PACKAGE_NAME="SukiSU-Ultra_kebab_LOS23.2_4.19_${KERNEL_COMMIT_SHORT}_KSU${KSU_VERSION}_builtin_manual"
           (
             cd AnyKernel3
             zip -r9 "../${PACKAGE_NAME}.zip" . \
@@ -294,8 +261,11 @@ jobs:
             echo "kernel_repository=$KERNEL_REPOSITORY"
             echo "kernel_commit=$(git -C kernel_workspace rev-parse HEAD)"
             echo "sukisu_commit=$(git -C kernel_workspace/KernelSU rev-parse HEAD)"
-            echo "susfs=${{ inputs.susfs }}"
-            echo "kpm=${{ inputs.kpm }}"
+            echo "sukisu_branch=$SUKISU_BRANCH"
+            echo "hook=manual"
+            echo "susfs=n"
+            echo "kpm=n"
+            echo "anykernel_commit=$ANYKERNEL_COMMIT"
             echo "clang=$("$GITHUB_WORKSPACE/toolchains/clang/bin/clang" --version | head -n1)"
             echo "package=${PACKAGE_NAME}.zip"
             cat "${PACKAGE_NAME}.zip.sha256"
