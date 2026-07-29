@@ -18,6 +18,8 @@ This public repository builds a device-specific SukiSU Ultra kernel for:
 The workflow produces an AnyKernel3 ZIP only. It deliberately does not create a
 standalone `boot.img`, because repacking the user's known-good, unmodified boot
 image locally avoids mixing in a ramdisk or DTB from a different ROM build.
+The package uses AnyKernel3's `split_boot`/`flash_boot` path so the existing
+ramdisk is not unpacked, edited, or repacked.
 
 ## Upstream workflow provenance
 

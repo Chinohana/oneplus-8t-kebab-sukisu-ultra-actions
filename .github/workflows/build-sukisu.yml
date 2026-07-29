@@ -229,16 +229,45 @@ jobs:
           rm -rf AnyKernel3/.git
           cp kernel_workspace/out/arch/arm64/boot/Image AnyKernel3/Image
 
+          sed -i \
+            "s/^kernel.string=.*/kernel.string=SukiSU Ultra kebab manual KSU${KSU_VERSION}/" \
+            AnyKernel3/anykernel.sh
           sed -i 's/^do.devicecheck=.*/do.devicecheck=1/' AnyKernel3/anykernel.sh
-          sed -i 's/^device.name1=.*/device.name1=kebab/' AnyKernel3/anykernel.sh
-          sed -i 's/^device.name2=.*/device.name2=OnePlus8T/' AnyKernel3/anykernel.sh
-          sed -i 's/^device.name3=.*/device.name3=KB2000/' AnyKernel3/anykernel.sh
+          sed -i 's/^device.name1=.*/device.name1=OnePlus8T/' AnyKernel3/anykernel.sh
+          sed -i 's/^device.name2=.*/device.name2=KB2000/' AnyKernel3/anykernel.sh
+          sed -i 's/^device.name3=.*/device.name3=kebab/' AnyKernel3/anykernel.sh
+          sed -i 's/^device.name4=.*/device.name4=/' AnyKernel3/anykernel.sh
+          sed -i 's/^device.name5=.*/device.name5=/' AnyKernel3/anykernel.sh
           sed -i 's|^BLOCK=.*|BLOCK=/dev/block/by-name/boot;|' AnyKernel3/anykernel.sh
           sed -i 's/^IS_SLOT_DEVICE=.*/IS_SLOT_DEVICE=1;/' AnyKernel3/anykernel.sh
           sed -i 's/^do.modules=.*/do.modules=0/' AnyKernel3/anykernel.sh
+          sed -i \
+            '/^# init\.rc$/,/^append_file fstab\.tuna "usbdisk" fstab;$/d' \
+            AnyKernel3/anykernel.sh
+          sed -i 's/^dump_boot;.*/split_boot;/' AnyKernel3/anykernel.sh
+          sed -i 's/^write_boot;.*/flash_boot;/' AnyKernel3/anykernel.sh
 
+          grep -q "^kernel.string=SukiSU Ultra kebab manual KSU${KSU_VERSION}$" \
+            AnyKernel3/anykernel.sh
+          grep -q '^device.name1=OnePlus8T$' AnyKernel3/anykernel.sh
+          grep -q '^device.name2=KB2000$' AnyKernel3/anykernel.sh
+          grep -q '^device.name3=kebab$' AnyKernel3/anykernel.sh
+          grep -q '^device.name4=$' AnyKernel3/anykernel.sh
+          grep -q '^device.name5=$' AnyKernel3/anykernel.sh
           grep -q '^BLOCK=/dev/block/by-name/boot;$' AnyKernel3/anykernel.sh
           grep -q '^IS_SLOT_DEVICE=1;$' AnyKernel3/anykernel.sh
+          test "$(grep -c '^split_boot;' AnyKernel3/anykernel.sh)" = 1
+          test "$(grep -c '^flash_boot;' AnyKernel3/anykernel.sh)" = 1
+          if grep -Eq \
+            '^(dump_boot|write_boot|backup_file|replace_string|insert_line|append_file|patch_fstab);?' \
+            AnyKernel3/anykernel.sh; then
+            echo "::error::Unexpected ramdisk modification command remains in AnyKernel3."
+            exit 1
+          fi
+          if grep -Eq '(^|[./])tuna([./;]|$)|device.name[45]=.+' AnyKernel3/anykernel.sh; then
+            echo "::error::Example-device content remains in AnyKernel3."
+            exit 1
+          fi
 
           rm -f AnyKernel3/README.md
           PACKAGE_NAME="SukiSU-Ultra_kebab_LOS23.2_4.19_${KERNEL_COMMIT_SHORT}_KSU${KSU_VERSION}_builtin_manual"
