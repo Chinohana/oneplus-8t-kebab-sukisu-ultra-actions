@@ -1,5 +1,16 @@
 # OnePlus 8T `kebab` — LineageOS 23.2 SukiSU Ultra cloud builder
 
+## Current status
+
+There is currently **no flashable v4.1.3 artifact** from this workflow.
+Linux 4.19 lacks the seccomp constant-action cache expected by the current
+SukiSU driver. This is not a missing constant: the target kernel's
+`struct seccomp_filter` has a different layout and no action bitmap.
+Completing this port safely requires a separately reviewed seccomp-cache
+backport; simply defining `SECCOMP_ARCH_NATIVE_NR` would risk an out-of-layout
+kernel write. The workflow therefore remains an investigation baseline, not a
+release builder.
+
 This public repository builds a device-specific SukiSU Ultra kernel for:
 
 - OnePlus 8T (`kebab`, SM8250)
