@@ -50,7 +50,6 @@ jobs:
           set -euo pipefail
           df -h /
           test "$(df --output=avail -BG / | tail -n1 | tr -dc '0-9')" -ge 30
-          remove-codeql: "true"
 
       - name: Check out builder sources
         uses: actions/checkout@v4
