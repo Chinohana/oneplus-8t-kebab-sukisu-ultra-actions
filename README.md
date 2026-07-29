@@ -49,6 +49,11 @@ non-GKI kprobe path. This uses the 4.x driver ABI required by the current
 v4.1.3 manager. The previous v3.1.4 integration was not compatible with that
 manager and is no longer used.
 
+Linux 4.19 predates kernel symbol namespaces, so the workflow guards
+SukiSU's `MODULE_IMPORT_NS` declaration with `#ifdef MODULE_IMPORT_NS`.
+The declaration remains unchanged on kernels that provide it and becomes a
+no-op on this 4.19 target.
+
 SUSFS is deliberately disabled in this baseline. The official
 `kernel-4.19` SUSFS branch exposes the legacy 1.5.5 interface. Mixing it into
 this 4.x baseline is blocked explicitly. First establish a clean current

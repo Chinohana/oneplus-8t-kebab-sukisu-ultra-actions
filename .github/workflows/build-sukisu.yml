@@ -143,6 +143,18 @@ jobs:
           echo "SukiSU commit: $(git -C KernelSU rev-parse HEAD)"
           echo "SukiSU driver version: $KSU_VERSION"
 
+      - name: Apply SukiSU v4.1.3 compatibility guard for Linux 4.19
+        run: |
+          set -euo pipefail
+          cd kernel_workspace
+          TARGET=KernelSU/kernel/core/init.c
+          IMPORT='MODULE_IMPORT_NS(VFS_internal_I_am_really_a_filesystem_and_am_NOT_a_driver);'
+          test "$(grep -Fxc "$IMPORT" "$TARGET")" -eq 1
+          sed -i "/^${IMPORT}$/i #ifdef MODULE_IMPORT_NS" "$TARGET"
+          sed -i "/^${IMPORT}$/a #endif" "$TARGET"
+          grep -F -B1 -A1 "$IMPORT" "$TARGET"
+          git -C KernelSU diff --check
+
       - name: Reject incompatible legacy SUSFS mix
         if: ${{ inputs.susfs }}
         run: |
