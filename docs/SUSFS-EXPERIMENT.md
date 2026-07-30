@@ -45,7 +45,8 @@ They are not generated or rewritten during a build.
 ## CI gates
 
 1. Confirm the original workflow still has SHA-256
-   `105ae64d85462cc1c4284677142be630cd99571e51464308114506ae1a4e1a11`.
+   `cd654904e8bf96032c1990ada83125894ece23daf41cdba7da514fd17d6afe31`
+   for its LF-normalized Git blob.
 2. Build the unchanged non-SUSFS baseline.
 3. Apply the combined experimental patch using `git apply --check`, without
    fuzz, three-way application or compatibility source rewriting.
