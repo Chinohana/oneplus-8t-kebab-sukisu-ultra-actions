@@ -1,6 +1,9 @@
 name: EXPERIMENTAL kebab SUSFS v2.2 audit build
 
 on:
+  push:
+    branches:
+      - experiment/susfs-v2.2-sm8250-4.19
   workflow_dispatch:
     inputs:
       profile:
@@ -16,7 +19,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: experimental-kebab-susfs-v2.2-${{ github.ref }}-${{ inputs.profile }}
+  group: experimental-kebab-susfs-v2.2-${{ github.ref }}-${{ inputs.profile || 'smoke' }}
   cancel-in-progress: false
 
 env:
@@ -55,12 +58,12 @@ env:
 
 jobs:
   audit-build:
-    name: ${{ inputs.profile }} / SM8250 4.19
+    name: ${{ inputs.profile || 'smoke' }} / SM8250 4.19
     if: github.ref == 'refs/heads/experiment/susfs-v2.2-sm8250-4.19'
     runs-on: ubuntu-24.04
     timeout-minutes: 360
     env:
-      PROFILE: ${{ inputs.profile }}
+      PROFILE: ${{ inputs.profile || 'smoke' }}
       SUSFS_SMOKE_APPROVED_COMMIT: ${{ vars.SUSFS_SMOKE_APPROVED_COMMIT }}
 
     steps:
