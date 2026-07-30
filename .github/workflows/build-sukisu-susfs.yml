@@ -504,7 +504,6 @@ jobs:
             grep -q '^CONFIG_KALLSYMS=y$' "$config"
             grep -q '^CONFIG_KALLSYMS_ALL=y$' "$config"
             grep -q '^# CONFIG_KPROBES is not set$' "$config"
-            grep -q '^# CONFIG_KPROBE_EVENTS is not set$' "$config"
             grep -q '^# CONFIG_KPM is not set$' "$config"
             if grep -Eq \
               '^CONFIG_(KPROBES|KPROBE_EVENTS|KPM)=[ym]$' "$config"; then
