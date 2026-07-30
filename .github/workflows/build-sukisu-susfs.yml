@@ -808,8 +808,9 @@ jobs:
         run: |
           set -euo pipefail
 
-          command -v sdkmanager
-          sdkmanager "ndk;$ANDROID_NDK_VERSION"
+          sdkmanager="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          test -x "$sdkmanager"
+          "$sdkmanager" "ndk;$ANDROID_NDK_VERSION"
           ndk_root="$ANDROID_SDK_ROOT/ndk/$ANDROID_NDK_VERSION"
           test -x "$ndk_root/ndk-build"
           grep -Fq "Pkg.Revision = $ANDROID_NDK_VERSION" \
