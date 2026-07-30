@@ -1,12 +1,18 @@
 # OnePlus 8T `kebab` — LineageOS 23.2 SukiSU Ultra cloud builder
 
+> [!CAUTION]
+> This branch is an **EXPERIMENTAL SUSFS v2.2 port** for one exact OnePlus 8T
+> (`kebab`) LineageOS 23.2 kernel revision. It is not known to boot yet. Do not
+> use it on another device, do not flash an Actions ZIP directly, and do not
+> treat a successful compile as proof of runtime safety.
+
 ## Current status
 
-There is currently **no tested flashable artifact** from this revised workflow.
-The previous `main + kprobe` experiment reached an unsafe Linux 4.19 seccomp
-layout mismatch and has been abandoned. This revision instead follows the
-official built-in, manual-hook route for non-GKI kernels. A cloud build and
-offline artifact review must pass before any ZIP is considered for testing.
+The non-SUSFS `main@1bc3fb3` built-in/manual-hook baseline is confirmed working
+on the target phone. This experimental branch keeps that known-good kernel,
+Clang, SukiSU, defconfig and packaging baseline fixed while adding a separately
+audited SUSFS v2.2 port. Runtime stability is not claimed until the staged
+temporary-boot and observation gates below pass.
 
 This public repository builds a device-specific SukiSU Ultra kernel for:
 
@@ -67,11 +73,19 @@ current built-in branch from calling its 5.10+ SELinux-hide feature on 4.19.
 SukiSU's own input handler provides Safe Mode; no obsolete input hook is
 added.
 
-SUSFS is deliberately and unconditionally disabled. The official
-`kernel-4.19` SUSFS branch exposes the legacy 1.5.5 interface, while this
-SukiSU generation expects a newer interface. The built-in branch defaults
-SUSFS to enabled, so the workflow explicitly writes
-`CONFIG_KSU_SUSFS=n` and fails if it is re-enabled.
+The original `build-sukisu.yml` still disables SUSFS unconditionally and is
+kept byte-for-byte identical to `main`. The separate
+`build-sukisu-susfs.yml` workflow pins official SUSFS v2.2 source commit
+`8eade9cd4aed3efddc9ff30b2e48d2d9667ad77d` and offers two profiles:
+
+- `smoke`: SUSFS core plus logging, with every hiding feature disabled.
+- `minimal-mount`: the smoke configuration plus `SUS_MOUNT` only.
+
+The exact-base v2.1 SM8250 case is used only to locate Linux 4.19 integration
+points. Its KernelSU-Next tree, KPM, input hooks, defconfig and third-party
+root code are not imported. The experimental workflow builds the known-good
+baseline first, applies one combined manual-hook/SUSFS patch with strict
+`git apply --check`, audits a file whitelist, then builds the selected profile.
 
 KPM is also unconditionally disabled. Its current code uses the newer
 two-argument `access_ok` API, while this arm64 4.19 kernel uses the legacy
@@ -81,10 +95,15 @@ configuration is merged.
 
 ## Safety
 
+- Start with `smoke`; do not test `minimal-mount` until smoke passes every gate.
 - Do not use this artifact on another device or ROM/kernel revision.
 - Keep the original boot image and a working Fastboot recovery path.
 - Do not install over a boot image already patched by APatch, Magisk or another
   KernelSU implementation.
 - Verify the SHA-256 and build provenance before testing.
-- Prefer a temporary boot test when supported. Flashing is never automated by
-  this repository.
+- Keep the existing `susfs4ksu` userspace module disabled for the first boot.
+- Back up both boot slots and verify that the bootloader is actually unlocked.
+- Test only a locally repacked boot image with `fastboot boot`. If temporary
+  boot is unsupported, stop; do not substitute a direct flash.
+- Flashing, slot switching and boot-image repacking are never automated by this
+  repository.
