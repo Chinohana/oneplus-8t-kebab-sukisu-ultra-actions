@@ -252,6 +252,7 @@ jobs:
 
           cat > "$RUNNER_TEMP/sukisu-compat-files.expected" <<'EOF'
           kernel/runtime/ksud.c
+          kernel/selinux/rules.c
           kernel/sulog/event.c
           EOF
           sed -i 's/^          //' \
@@ -397,6 +398,15 @@ jobs:
             kernel_experiment/fs kernel_experiment/include/linux \
             kernel_experiment/kernel; then
             echo "::error::A legacy SUSFS API or option was introduced."
+            exit 1
+          fi
+
+          batch_sid_calls="$(
+            grep -Fc 'susfs_set_batch_sid();' \
+              kernel_experiment/KernelSU/kernel/selinux/rules.c
+          )"
+          if test "$batch_sid_calls" -ne 2; then
+            echo "::error::Expected both modern and Linux 4.19 SID-cache calls; found ${batch_sid_calls}."
             exit 1
           fi
 

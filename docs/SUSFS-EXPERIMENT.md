@@ -37,7 +37,10 @@ following exact-base changes:
 - upgrade mount controls to v2.2 static keys, high mount-ID ranges and the
   kernel's native ID allocators;
 - adapt the combined exec/access/stat hooks to the pinned SukiSU `builtin`
-  branch's real bool/static-key types.
+  branch's real bool/static-key types;
+- call `susfs_set_batch_sid()` after the Linux 4.19 SELinux policy update, as
+  required by the official v2.2 integration, so zygote children receive the
+  manager fd and expected seccomp handling.
 
 These adaptations are kept in the static combined patch and audited in CI.
 They are not generated or rewritten during a build.
@@ -56,7 +59,8 @@ They are not generated or rewritten during a build.
 6. Build `smoke` for every run. A `minimal-mount` request may build only after
    smoke succeeds in the same audit.
 7. Verify manual-hook and SUSFS symbols, compare final configs/System.map/Image
-   size, and fail on build warnings or abnormal growth.
+   size, require both modern and Linux 4.19 SID-cache call sites, and fail on
+   build warnings or abnormal growth.
 8. Build the pinned `ksu_susfs` userspace tool as a separate artifact. Never
    install or invoke it automatically.
 9. Publish only short-lived Actions artifacts with SHA-256 and provenance. Do
