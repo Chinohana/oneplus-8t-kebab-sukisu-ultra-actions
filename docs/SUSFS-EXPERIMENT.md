@@ -57,7 +57,11 @@ They are not generated or rewritten during a build.
 5. Force KPM and kprobes off. Disable every SUSFS child option before enabling
    the exact requested profile.
 6. Build `smoke` for every run. A `minimal-mount` request may build only after
-   smoke succeeds in the same audit.
+   smoke succeeds in the same audit. An `extended-stat` request additionally
+   builds `minimal-mount`, verifies that the three runtime-approved patch blobs
+   still exactly match commit
+   `73c1484584a40dd41a9ccc2d0593d47de5b66dc6`, then enables only
+   `CONFIG_KSU_SUSFS_SUS_KSTAT`.
 7. Verify manual-hook and SUSFS symbols, compare final configs/System.map/Image
    size, require both modern and Linux 4.19 SID-cache call sites, and fail on
    build warnings or abnormal growth.
@@ -88,7 +92,11 @@ No CI artifact is approved for direct flashing.
    Never switch slots or overwrite both slots. Require three cold boots and at
    least 24 hours of observation.
 8. Repeat the same sequence for `minimal-mount` only after smoke is stable.
-9. On any panic, oops, BUG, use-after-free, lockup, SELinux failure or functional
+9. Test `extended-stat` only after `minimal-mount`; require the reported feature
+   list to add exactly `SUS_KSTAT`, keep every persistent kstat rule empty for
+   the first boot, and add one harmless temporary-file rule only after the boot
+   checks pass.
+10. On any panic, oops, BUG, use-after-free, lockup, SELinux failure or functional
    regression, restore the saved active boot image in Fastboot, collect
    dmesg/pstore and stop the experiment.
 

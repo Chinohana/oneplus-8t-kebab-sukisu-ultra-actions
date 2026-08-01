@@ -4,10 +4,12 @@
 > This branch is an **EXPERIMENTAL SUSFS v2.2 port** for one exact OnePlus 8T
 > (`kebab`) LineageOS 23.2 kernel revision. **TESTING ONLY / 仅供测试.** The
 > `smoke` and `minimal-mount` profiles boot on the development device, but the
-> planned 24-hour stability observation was deliberately skipped. Long-term
-> stability is unknown and crashes, boot failure, or data loss remain possible.
-> Do not use it on another device, do not flash an Actions ZIP directly, and do
-> not treat the results below as a production-stability guarantee.
+> planned 24-hour stability observation was deliberately skipped. The newer
+> `extended-stat` profile is build-only until it separately passes the device
+> gates. Long-term stability is unknown and crashes, boot failure, or data loss
+> remain possible. Do not use it on another device, do not flash an Actions ZIP
+> directly, and do not treat the results below as a production-stability
+> guarantee.
 
 ## Current status
 
@@ -31,9 +33,17 @@ manual functional testing, current-slot-only `boot_b` installation, and three
 physical cold boots. The official v2.2 tool reported exactly `SUS_MOUNT` plus
 logging; all other hiding features remained disabled. Root, SELinux Enforcing,
 encrypted storage and the sdcard monitor remained healthy, strict fatal scans
-were empty, and pstore remained empty. The external `susfs4ksu` module was kept
-disabled. This profile likewise has no completed 24-hour stability evidence and
-remains testing-only.
+were empty, and pstore remained empty. Initial kernel validation kept the
+external `susfs4ksu` module disabled. After those gates passed,
+`susfs4ksu v2.2.0-R28` was enabled with the pinned official v2.2 userspace tool
+and completed one normal boot with an active marker, clean module logs and
+empty pstore. This profile likewise has no completed 24-hour stability evidence
+and remains testing-only.
+
+`extended-stat` is the next isolated experiment. It adds only `SUS_KSTAT` on
+top of the runtime-tested `minimal-mount` feature set. `SUS_PATH`, `SUS_MAP`,
+uname/cmdline spoofing, open redirect and symbol hiding remain forced off. No
+`extended-stat` artifact is runtime-approved merely because it compiles.
 
 This public repository builds a device-specific SukiSU Ultra kernel for:
 
@@ -97,10 +107,12 @@ added.
 The original `build-sukisu.yml` still disables SUSFS unconditionally and is
 kept byte-for-byte identical to `main`. The separate
 `build-sukisu-susfs.yml` workflow pins official SUSFS v2.2 source commit
-`8eade9cd4aed3efddc9ff30b2e48d2d9667ad77d` and offers two profiles:
+`8eade9cd4aed3efddc9ff30b2e48d2d9667ad77d` and offers three profiles:
 
 - `smoke`: SUSFS core plus logging, with every hiding feature disabled.
 - `minimal-mount`: the smoke configuration plus `SUS_MOUNT` only.
+- `extended-stat`: `minimal-mount` plus `SUS_KSTAT` only; build-only until its
+  separate controlled device test succeeds.
 
 The exact-base v2.1 SM8250 case is used only to locate Linux 4.19 integration
 points. Its KernelSU-Next tree, KPM, input hooks, defconfig and third-party
@@ -119,6 +131,9 @@ configuration is merged.
 - Start with `smoke`. Advancing to `minimal-mount` without completing the
   24-hour smoke observation is an explicit risk acceptance, not a passed
   stability gate.
+- Test `extended-stat` only after confirming that the exact runtime-approved
+  `minimal-mount` patch inputs are unchanged. A successful build is not
+  authorization to flash it.
 - Do not use this artifact on another device or ROM/kernel revision.
 - Keep the original boot image and a working Fastboot recovery path.
 - Do not install over a boot image already patched by APatch, Magisk or another
