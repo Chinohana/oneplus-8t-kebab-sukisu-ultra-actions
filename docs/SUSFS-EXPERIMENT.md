@@ -108,3 +108,36 @@ No CI artifact is approved for direct flashing.
 
 Passing compilation is not a stability claim. Passing temporary boot is not a
 24-hour stability claim. Each gate must be recorded independently.
+
+## Recorded `extended-full` temporary-boot evidence
+
+The exact `extended-full` artifact from experimental workflow commit
+`c60b11c91935` passed its CI audit and was locally repacked by replacing only
+the kernel in the saved active-slot boot image. The repacked image was started
+with `fastboot boot`; it was not flashed and no slot was switched.
+
+During this single isolated boot, Android reported boot completion, SukiSU root
+worked, SELinux remained Enforcing and encrypted storage was available. The
+pinned official `ksu_susfs` v2.2 tool reported `v2.2.0`, `NON-GKI`, and exactly
+these enabled options:
+
+- `CONFIG_KSU_SUSFS_SUS_PATH`
+- `CONFIG_KSU_SUSFS_SUS_MOUNT`
+- `CONFIG_KSU_SUSFS_SUS_KSTAT`
+- `CONFIG_KSU_SUSFS_SPOOF_UNAME`
+- `CONFIG_KSU_SUSFS_ENABLE_LOG`
+- `CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS`
+- `CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG`
+- `CONFIG_KSU_SUSFS_OPEN_REDIRECT`
+- `CONFIG_KSU_SUSFS_SUS_MAP`
+
+The external `susfs4ksu v2.2.0-R28` module remained disabled. Pstore was empty,
+and a strict fatal-pattern scan found no kernel panic, oops, BUG,
+use-after-free or lockup. The known baseline display-driver GPIO diagnostic is
+not counted as a SUSFS regression.
+
+This record is deliberately narrow: no SUSFS rules or spoof values were
+activated, no userspace-module behavior was exercised, and no peripheral,
+repeated-cold-boot, installed-boot or long-duration checks were completed.
+Therefore `extended-full` remains testing-only and is not approved for direct
+flashing.

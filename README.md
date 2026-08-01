@@ -5,8 +5,9 @@
 > (`kebab`) LineageOS 23.2 kernel revision. **TESTING ONLY / 仅供测试.** The
 > `smoke` and `minimal-mount` profiles boot on the development device, but the
 > planned 24-hour stability observation was deliberately skipped. The newer
-> `extended-stat` and `extended-full` profiles are build-only until they
-> separately pass the device gates. Long-term stability is unknown and crashes,
+> `extended-stat` profile remains build-only. `extended-full` has passed one
+> isolated temporary boot, but not peripheral, cold-boot, installed-boot or
+> long-duration validation. Long-term stability is unknown and crashes,
 > boot failure, or data loss remain possible. Do not use it on another device,
 > do not flash an Actions ZIP directly, and do not treat the results below as a
 > production-stability guarantee.
@@ -50,7 +51,15 @@ tester. It enables every feature still present in the pinned official v2.2
 Kconfig: `SUS_PATH`, `SUS_MOUNT`, `SUS_KSTAT`, `SUS_MAP`, uname and cmdline
 spoofing, open redirect, symbol hiding and logging. Deprecated v1.5-era mount
 and try-umount options remain absent. This all-at-once profile does not replace
-the staged artifacts or their recovery value.
+the staged artifacts or their recovery value. The exact image built from
+experimental commit `c60b11c91935` passed CI and one `fastboot boot` on the
+development KB2000. Android completed boot, root worked, SELinux remained
+Enforcing, encrypted storage was available, and the pinned official tool
+reported `v2.2.0 / NON-GKI` with exactly all nine options above. Pstore was
+empty and a strict fatal-pattern scan found no panic, oops, BUG, UAF or lockup.
+The external `susfs4ksu` module remained disabled, so this validates the kernel
+interface in isolation only. It does not validate module rules, spoof values,
+peripherals, repeated boots, flashing or stability, and is not flash-approved.
 
 This public repository builds a device-specific SukiSU Ultra kernel for:
 
@@ -121,7 +130,8 @@ kept byte-for-byte identical to `main`. The separate
 - `extended-stat`: `minimal-mount` plus `SUS_KSTAT` only; build-only until its
   separate controlled device test succeeds.
 - `extended-full`: all options still provided by the pinned official v2.2
-  Kconfig; build-only and higher risk, with deprecated options still excluded.
+  Kconfig; one isolated temporary boot passed, but it remains higher risk and
+  not flash-approved, with deprecated options still excluded.
 
 The exact-base v2.1 SM8250 case is used only to locate Linux 4.19 integration
 points. Its KernelSU-Next tree, KPM, input hooks, defconfig and third-party
