@@ -32,6 +32,20 @@ index a18707b..00ad390 100644
              apply_kernelsu_rules();
              cache_sid();
              setup_ksu_cred();
+diff --git a/kernel/selinux/rules.c b/kernel/selinux/rules.c
+index f8a33fa..778cd58 100644
+--- a/kernel/selinux/rules.c
++++ b/kernel/selinux/rules.c
+@@ -254,6 +254,9 @@ do_stop_machine:
+ out_flush:
+     smp_mb();
+     reset_avc_cache();
++#ifdef CONFIG_KSU_SUSFS
++    susfs_set_batch_sid();
++#endif
+ #endif
+ }
+ 
 diff --git a/kernel/sulog/event.c b/kernel/sulog/event.c
 index 144b375..15c4b9a 100644
 --- a/kernel/sulog/event.c
