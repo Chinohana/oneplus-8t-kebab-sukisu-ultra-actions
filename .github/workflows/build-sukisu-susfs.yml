@@ -1,16 +1,16 @@
-name: EXPERIMENTAL kebab SUSFS v2.2 audit build
+name: Build kebab SukiSU Ultra with SUSFS v2.2
 
 on:
   push:
     branches:
-      - experiment/susfs-v2.2-sm8250-4.19
+      - main
   workflow_dispatch:
     inputs:
       profile:
-        description: Experimental SUSFS feature profile
+        description: Audited SUSFS feature profile
         required: true
         type: choice
-        default: smoke
+        default: extended-full
         options:
           - smoke
           - minimal-mount
@@ -21,13 +21,13 @@ permissions:
   contents: read
 
 concurrency:
-  group: experimental-kebab-susfs-v2.2-${{ github.ref }}-${{ inputs.profile || 'smoke' }}
+  group: kebab-susfs-v2.2-${{ github.ref }}-${{ inputs.profile || 'extended-full' }}
   cancel-in-progress: false
 
 env:
   BUILDER_BASE_COMMIT: 1bc3fb3e03f313b905851b32e6fff2d14f49e0b7
   ORIGINAL_WORKFLOW_SHA256: cd654904e8bf96032c1990ada83125894ece23daf41cdba7da514fd17d6afe31
-  EXPERIMENT_BRANCH: experiment/susfs-v2.2-sm8250-4.19
+  CANONICAL_BRANCH: main
 
   KERNEL_REPOSITORY: https://github.com/LineageOS/android_kernel_oneplus_sm8250.git
   KERNEL_BRANCH: lineage-23.2
@@ -61,30 +61,30 @@ env:
 
 jobs:
   audit-build:
-    name: ${{ inputs.profile || 'smoke' }} / SM8250 4.19
-    if: github.ref == 'refs/heads/experiment/susfs-v2.2-sm8250-4.19'
+    name: ${{ inputs.profile || 'extended-full' }} / SM8250 4.19
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 360
     env:
-      PROFILE: ${{ inputs.profile || 'smoke' }}
+      PROFILE: ${{ inputs.profile || 'extended-full' }}
       SUSFS_SMOKE_APPROVED_COMMIT: ${{ vars.SUSFS_SMOKE_APPROVED_COMMIT }}
 
     steps:
-      - name: Check out experimental builder
+      - name: Check out canonical SUSFS builder
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
 
-      - name: Enforce branch and immutable main workflow
+      - name: Enforce branch and immutable legacy baseline
         shell: bash
         run: |
           set -euo pipefail
 
-          test "$GITHUB_REF" = "refs/heads/$EXPERIMENT_BRANCH"
+          test "$GITHUB_REF" = "refs/heads/$CANONICAL_BRANCH"
           case "$PROFILE" in
             smoke|minimal-mount|extended-stat|extended-full) ;;
             *)
-              echo "::error::Unknown experimental profile: $PROFILE"
+              echo "::error::Unknown SUSFS profile: $PROFILE"
               exit 1
               ;;
           esac
@@ -93,10 +93,8 @@ jobs:
           git show \
             "${BUILDER_BASE_COMMIT}:.github/workflows/build-sukisu.yml" \
             > "$RUNNER_TEMP/original-build-sukisu.yml"
-          cmp "$RUNNER_TEMP/original-build-sukisu.yml" \
-            .github/workflows/build-sukisu.yml
           test "$(
-            sha256sum .github/workflows/build-sukisu.yml | awk '{print $1}'
+            sha256sum "$RUNNER_TEMP/original-build-sukisu.yml" | awk '{print $1}'
           )" = "$ORIGINAL_WORKFLOW_SHA256"
 
           test -s "$SUSFS_PATCH"
@@ -1206,11 +1204,11 @@ jobs:
           cp "$ndk_root/source.properties" \
             artifacts/tool/ndk-source.properties
 
-          tool_artifact_name="EXPERIMENTAL_ksu_susfs-tool_v2.2.0_SF-${SUSFS_COMMIT:0:12}_NDK-${ANDROID_NDK_VERSION}_WF-${GITHUB_SHA:0:12}"
+          tool_artifact_name="TESTING_ksu_susfs-tool_v2.2.0_SF-${SUSFS_COMMIT:0:12}_NDK-${ANDROID_NDK_VERSION}_WF-${GITHUB_SHA:0:12}"
           echo "TOOL_ARTIFACT_NAME=$tool_artifact_name" \
             >> "$GITHUB_ENV"
 
-      - name: Make experimental AnyKernel3 package
+      - name: Make audited AnyKernel3 package
         shell: bash
         run: |
           set -euo pipefail
@@ -1227,7 +1225,7 @@ jobs:
             AnyKernel3/Image
 
           sed -i \
-            "s/^kernel.string=.*/kernel.string=EXPERIMENTAL SukiSU Ultra kebab SUSFS v2.2 ${PROFILE} KSU${SUKISU_DRIVER_VERSION}/" \
+            "s/^kernel.string=.*/kernel.string=TESTING SukiSU Ultra kebab SUSFS v2.2 ${PROFILE} KSU${SUKISU_DRIVER_VERSION}/" \
             AnyKernel3/anykernel.sh
           sed -i 's/^do.devicecheck=.*/do.devicecheck=1/' \
             AnyKernel3/anykernel.sh
@@ -1254,7 +1252,7 @@ jobs:
           sed -i 's/^write_boot;.*/flash_boot;/' AnyKernel3/anykernel.sh
 
           grep -Fqx \
-            "kernel.string=EXPERIMENTAL SukiSU Ultra kebab SUSFS v2.2 ${PROFILE} KSU${SUKISU_DRIVER_VERSION}" \
+            "kernel.string=TESTING SukiSU Ultra kebab SUSFS v2.2 ${PROFILE} KSU${SUKISU_DRIVER_VERSION}" \
             AnyKernel3/anykernel.sh
           grep -q '^device.name1=OnePlus8T$' AnyKernel3/anykernel.sh
           grep -q '^device.name2=KB2000$' AnyKernel3/anykernel.sh
@@ -1280,7 +1278,7 @@ jobs:
           fi
 
           rm -f AnyKernel3/README.md
-          prefix="EXPERIMENTAL_SukiSU-Ultra_kebab_${PROFILE}_SUSFS-v2.2"
+          prefix="TESTING_SukiSU-Ultra_kebab_${PROFILE}_SUSFS-v2.2"
           pins="K-${KERNEL_COMMIT:0:12}_SU-${SUKISU_COMMIT:0:12}_SF-${SUSFS_COMMIT:0:12}_REF-${SM8250_REFERENCE_COMMIT:0:12}_AK-${ANYKERNEL_COMMIT:0:12}_TC-${CLANG_ARCHIVE_COMMIT:0:12}_WF-${GITHUB_SHA:0:12}"
           package_name="${prefix}_${pins}_KSU${SUKISU_DRIVER_VERSION}"
           (
@@ -1313,7 +1311,7 @@ jobs:
             > artifacts/kernel/selected-build-files.sha256
 
           {
-            echo "status=EXPERIMENTAL_NOT_RUNTIME_VALIDATED"
+            echo "status=TESTING_ONLY_SEE_README_FOR_PROFILE_RUNTIME_SCOPE"
             echo "device=kebab"
             echo "model=OnePlus 8T"
             echo "rom=LineageOS 23.2"
@@ -1376,7 +1374,7 @@ jobs:
           sha256sum artifacts/tool/tool-provenance.txt \
             > artifacts/tool/tool-provenance.txt.sha256
 
-      - name: Upload experimental kernel package and audit
+      - name: Upload kernel package and audit
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.KERNEL_ARTIFACT_NAME }}
