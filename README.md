@@ -3,11 +3,11 @@
 > [!CAUTION]
 > This branch is an **EXPERIMENTAL SUSFS v2.2 port** for one exact OnePlus 8T
 > (`kebab`) LineageOS 23.2 kernel revision. **TESTING ONLY / 仅供测试.** The
-> `smoke` profile boots on the development device, but the 24-hour stability
-> observation was deliberately skipped. Long-term stability is unknown and
-> crashes, boot failure, or data loss remain possible. Do not use it on another
-> device, do not flash an Actions ZIP directly, and do not treat the results
-> below as a production-stability guarantee.
+> `smoke` and `minimal-mount` profiles boot on the development device, but the
+> planned 24-hour stability observation was deliberately skipped. Long-term
+> stability is unknown and crashes, boot failure, or data loss remain possible.
+> Do not use it on another device, do not flash an Actions ZIP directly, and do
+> not treat the results below as a production-stability guarantee.
 
 ## Current status
 
@@ -23,8 +23,17 @@ boots. Root, SUSFS v2.2.0, SELinux Enforcing, encrypted storage and the sdcard
 monitor remained healthy, with empty strict fatal scans and pstore. However,
 the tester explicitly waived the planned 24-hour observation on 2026-08-01.
 Accordingly, this is evidence of short-run boot and functional viability only;
-it is not evidence of long-term stability. The `minimal-mount` profile has not
-yet received runtime testing.
+it is not evidence of long-term stability.
+
+The `minimal-mount` image built from experimental commit `73c1484584a4` also
+passed CI audit, exact artifact/config/provenance verification, temporary boot,
+manual functional testing, current-slot-only `boot_b` installation, and three
+physical cold boots. The official v2.2 tool reported exactly `SUS_MOUNT` plus
+logging; all other hiding features remained disabled. Root, SELinux Enforcing,
+encrypted storage and the sdcard monitor remained healthy, strict fatal scans
+were empty, and pstore remained empty. The external `susfs4ksu` module was kept
+disabled. This profile likewise has no completed 24-hour stability evidence and
+remains testing-only.
 
 This public repository builds a device-specific SukiSU Ultra kernel for:
 
