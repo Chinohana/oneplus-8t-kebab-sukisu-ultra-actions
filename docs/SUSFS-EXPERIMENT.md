@@ -1,7 +1,8 @@
-# SUSFS v2.2 experiment gates
+# SUSFS v2.2 build and device gates
 
-This document applies only to branch
-`experiment/susfs-v2.2-sm8250-4.19`.
+This document applies to the canonical `main` SUSFS line. The original
+non-SUSFS baseline is preserved at `legacy@1bc3fb3`; the historical
+`experiment/susfs-v2.2-sm8250-4.19` branch remains as development provenance.
 
 ## Fixed inputs
 

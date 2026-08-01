@@ -1,7 +1,7 @@
-# OnePlus 8T `kebab` — LineageOS 23.2 SukiSU Ultra cloud builder
+# OnePlus 8T `kebab` — SukiSU Ultra + SUSFS v2.2 builder
 
 > [!CAUTION]
-> This branch is an **EXPERIMENTAL SUSFS v2.2 port** for one exact OnePlus 8T
+> `main` is the canonical **SUSFS v2.2** line for one exact OnePlus 8T
 > (`kebab`) LineageOS 23.2 kernel revision. **TESTING ONLY / 仅供测试.** The
 > `smoke` and `minimal-mount` profiles boot on the development device, but the
 > planned 24-hour stability observation was deliberately skipped. The newer
@@ -15,10 +15,10 @@
 
 ## Current status
 
-The non-SUSFS `main@1bc3fb3` built-in/manual-hook baseline is confirmed working
-on the target phone. This experimental branch keeps that known-good kernel,
-Clang, SukiSU, defconfig and packaging baseline fixed while adding a separately
-audited SUSFS v2.2 port.
+The non-SUSFS `legacy@1bc3fb3` built-in/manual-hook baseline is confirmed
+working on the target phone and remains available as the recovery/reference
+line. `main` keeps that known-good kernel, Clang, SukiSU, defconfig and
+packaging baseline fixed while adding the audited SUSFS v2.2 port.
 
 The exact `smoke` image built from experimental commit `19283953cc7f` has passed
 CI audit, repeated temporary boots, manual camera/fingerprint/audio/daily-use
@@ -133,9 +133,10 @@ current built-in branch from calling its 5.10+ SELinux-hide feature on 4.19.
 SukiSU's own input handler provides Safe Mode; no obsolete input hook is
 added.
 
-The original `build-sukisu.yml` still disables SUSFS unconditionally and is
-kept byte-for-byte identical to `main`. The separate
-`build-sukisu-susfs.yml` workflow pins official SUSFS v2.2 source commit
+The `legacy` branch preserves the original `build-sukisu.yml`, which disables
+SUSFS unconditionally, byte-for-byte at commit `1bc3fb3`. The canonical
+`build-sukisu-susfs.yml` workflow on `main` verifies that immutable legacy
+baseline before building and pins official SUSFS v2.2 source commit
 `8eade9cd4aed3efddc9ff30b2e48d2d9667ad77d` and offers four profiles:
 
 - `smoke`: SUSFS core plus logging, with every hiding feature disabled.
@@ -147,9 +148,12 @@ kept byte-for-byte identical to `main`. The separate
   reboot passed, but it remains higher risk and testing-only, with deprecated
   options still excluded.
 
+Pushes to `main` and manual runs default to the runtime-tested `extended-full`
+profile. The staged profiles remain available for regression isolation.
+
 The exact-base v2.1 SM8250 case is used only to locate Linux 4.19 integration
 points. Its KernelSU-Next tree, KPM, input hooks, defconfig and third-party
-root code are not imported. The experimental workflow builds the known-good
+root code are not imported. The canonical workflow builds the known-good
 baseline first, applies one combined manual-hook/SUSFS patch with strict
 `git apply --check`, audits a file whitelist, then builds the selected profile.
 
