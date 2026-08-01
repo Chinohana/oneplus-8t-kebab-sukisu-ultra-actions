@@ -2,17 +2,29 @@
 
 > [!CAUTION]
 > This branch is an **EXPERIMENTAL SUSFS v2.2 port** for one exact OnePlus 8T
-> (`kebab`) LineageOS 23.2 kernel revision. It is not known to boot yet. Do not
-> use it on another device, do not flash an Actions ZIP directly, and do not
-> treat a successful compile as proof of runtime safety.
+> (`kebab`) LineageOS 23.2 kernel revision. **TESTING ONLY / 仅供测试.** The
+> `smoke` profile boots on the development device, but the 24-hour stability
+> observation was deliberately skipped. Long-term stability is unknown and
+> crashes, boot failure, or data loss remain possible. Do not use it on another
+> device, do not flash an Actions ZIP directly, and do not treat the results
+> below as a production-stability guarantee.
 
 ## Current status
 
 The non-SUSFS `main@1bc3fb3` built-in/manual-hook baseline is confirmed working
 on the target phone. This experimental branch keeps that known-good kernel,
 Clang, SukiSU, defconfig and packaging baseline fixed while adding a separately
-audited SUSFS v2.2 port. Runtime stability is not claimed until the staged
-temporary-boot and observation gates below pass.
+audited SUSFS v2.2 port.
+
+The exact `smoke` image built from experimental commit `19283953cc7f` has passed
+CI audit, repeated temporary boots, manual camera/fingerprint/audio/daily-use
+checks, a current-slot-only `boot_b` installation, and three physical cold
+boots. Root, SUSFS v2.2.0, SELinux Enforcing, encrypted storage and the sdcard
+monitor remained healthy, with empty strict fatal scans and pstore. However,
+the tester explicitly waived the planned 24-hour observation on 2026-08-01.
+Accordingly, this is evidence of short-run boot and functional viability only;
+it is not evidence of long-term stability. The `minimal-mount` profile has not
+yet received runtime testing.
 
 This public repository builds a device-specific SukiSU Ultra kernel for:
 
@@ -95,7 +107,9 @@ configuration is merged.
 
 ## Safety
 
-- Start with `smoke`; do not test `minimal-mount` until smoke passes every gate.
+- Start with `smoke`. Advancing to `minimal-mount` without completing the
+  24-hour smoke observation is an explicit risk acceptance, not a passed
+  stability gate.
 - Do not use this artifact on another device or ROM/kernel revision.
 - Keep the original boot image and a working Fastboot recovery path.
 - Do not install over a boot image already patched by APatch, Magisk or another
