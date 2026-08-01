@@ -109,7 +109,7 @@ No CI artifact is approved for direct flashing.
 Passing compilation is not a stability claim. Passing temporary boot is not a
 24-hour stability claim. Each gate must be recorded independently.
 
-## Recorded `extended-full` temporary-boot evidence
+## Recorded `extended-full` device evidence
 
 The exact `extended-full` artifact from experimental workflow commit
 `c60b11c91935` passed its CI audit and was locally repacked by replacing only
@@ -131,13 +131,34 @@ these enabled options:
 - `CONFIG_KSU_SUSFS_OPEN_REDIRECT`
 - `CONFIG_KSU_SUSFS_SUS_MAP`
 
-The external `susfs4ksu v2.2.0-R28` module remained disabled. Pstore was empty,
-and a strict fatal-pattern scan found no kernel panic, oops, BUG,
-use-after-free or lockup. The known baseline display-driver GPIO diagnostic is
-not counted as a SUSFS regression.
+The external `susfs4ksu v2.2.0-R28` module remained disabled for this first
+boot. Pstore was empty, and a strict fatal-pattern scan found no kernel panic,
+oops, BUG, use-after-free or lockup. The tester reported normal network,
+camera, fingerprint, audio and file I/O. The known baseline display-driver GPIO
+diagnostic is not counted as a SUSFS regression.
 
-This record is deliberately narrow: no SUSFS rules or spoof values were
-activated, no userspace-module behavior was exercised, and no peripheral,
-repeated-cold-boot, installed-boot or long-duration checks were completed.
-Therefore `extended-full` remains testing-only and is not approved for direct
-flashing.
+After that temporary test, the identical locally repacked image (SHA-256
+`a01d5add6f898fa756585c35c51c49b9687eb10501f81c1d7170064f379fcac3`)
+was written only to the already-active `boot_b`. The saved original `boot_b`
+backup retained SHA-256
+`37ccb46cc368027e2fef746577859b414d9963041956c093cb69fc72df107bae`.
+No slot was switched. The installed image completed one normal boot with the
+userspace module still disabled; root, Enforcing SELinux, encrypted storage and
+file I/O remained available, with empty pstore and fatal scans.
+
+Before the next boot, every non-comment entry in `sus_path.txt`,
+`sus_path_loop.txt`, `sus_maps.txt`, `sus_mount.txt`, `try_umount.txt` and
+`sus_open_redirect.txt` was confirmed empty, `sus_kstat_statically.json` was
+`[]`, and all optional spoof settings were zero. Official
+`susfs4ksu v2.2.0-R28` was then enabled. The next boot completed normally; its
+active marker and boot-stage log were present, the sdcard monitor started, and
+the module reported all nine intended v2.2 features enabled. The deprecated
+try-umount, automatic mount, magic-mount and overlay options remained marked
+deprecated. Root, Enforcing SELinux, encrypted storage and file I/O stayed
+healthy, while pstore and strict fatal scans stayed empty.
+
+This is still deliberately narrow evidence: custom SUSFS rules and spoof
+values were not exercised, repeated physical cold boots and long-duration
+observation were not completed, and the Actions ZIP itself was not directly
+flashed. `extended-full` therefore remains testing-only rather than a
+production-stability recommendation.

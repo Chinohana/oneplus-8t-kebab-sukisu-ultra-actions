@@ -5,9 +5,10 @@
 > (`kebab`) LineageOS 23.2 kernel revision. **TESTING ONLY / 仅供测试.** The
 > `smoke` and `minimal-mount` profiles boot on the development device, but the
 > planned 24-hour stability observation was deliberately skipped. The newer
-> `extended-stat` profile remains build-only. `extended-full` has passed one
-> isolated temporary boot, but not peripheral, cold-boot, installed-boot or
-> long-duration validation. Long-term stability is unknown and crashes,
+> `extended-stat` profile remains build-only. `extended-full` has passed an
+> isolated temporary boot, a current-slot installation and one module-enabled
+> reboot, but not repeated cold boots or long-duration validation. Long-term
+> stability is unknown and crashes,
 > boot failure, or data loss remain possible. Do not use it on another device,
 > do not flash an Actions ZIP directly, and do not treat the results below as a
 > production-stability guarantee.
@@ -57,9 +58,21 @@ development KB2000. Android completed boot, root worked, SELinux remained
 Enforcing, encrypted storage was available, and the pinned official tool
 reported `v2.2.0 / NON-GKI` with exactly all nine options above. Pstore was
 empty and a strict fatal-pattern scan found no panic, oops, BUG, UAF or lockup.
-The external `susfs4ksu` module remained disabled, so this validates the kernel
-interface in isolation only. It does not validate module rules, spoof values,
-peripherals, repeated boots, flashing or stability, and is not flash-approved.
+The tester also reported normal network, camera, fingerprint, audio and file
+I/O during the temporary boot.
+
+After that check, the identical locally repacked image (SHA-256
+`a01d5add6f898fa756585c35c51c49b9687eb10501f81c1d7170064f379fcac3`)
+was written only to the already-active `boot_b`; no slot was switched. It
+completed one persistent boot with `susfs4ksu` still disabled, followed by one
+boot with official `susfs4ksu v2.2.0-R28` enabled. Before enabling the module,
+all custom SUSFS rule lists and spoof settings were verified empty. The module
+created its active marker, completed all boot stages, started the sdcard monitor
+and reported all nine intended features enabled; deprecated options remained
+deprecated. Root, Enforcing SELinux, encrypted storage and file I/O remained
+healthy, while pstore and strict fatal scans remained empty. Repeated cold-boot
+and long-duration stability evidence still does not exist, so this remains a
+testing-only result rather than a production recommendation.
 
 This public repository builds a device-specific SukiSU Ultra kernel for:
 
@@ -130,8 +143,9 @@ kept byte-for-byte identical to `main`. The separate
 - `extended-stat`: `minimal-mount` plus `SUS_KSTAT` only; build-only until its
   separate controlled device test succeeds.
 - `extended-full`: all options still provided by the pinned official v2.2
-  Kconfig; one isolated temporary boot passed, but it remains higher risk and
-  not flash-approved, with deprecated options still excluded.
+  Kconfig; temporary boot, current-slot installation and one module-enabled
+  reboot passed, but it remains higher risk and testing-only, with deprecated
+  options still excluded.
 
 The exact-base v2.1 SM8250 case is used only to locate Linux 4.19 integration
 points. Its KernelSU-Next tree, KPM, input hooks, defconfig and third-party
