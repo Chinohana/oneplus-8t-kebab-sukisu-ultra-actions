@@ -15,6 +15,7 @@ on:
           - smoke
           - minimal-mount
           - extended-stat
+          - extended-full
 
 permissions:
   contents: read
@@ -81,7 +82,7 @@ jobs:
 
           test "$GITHUB_REF" = "refs/heads/$EXPERIMENT_BRANCH"
           case "$PROFILE" in
-            smoke|minimal-mount|extended-stat) ;;
+            smoke|minimal-mount|extended-stat|extended-full) ;;
             *)
               echo "::error::Unknown experimental profile: $PROFILE"
               exit 1
@@ -111,7 +112,8 @@ jobs:
             fi
           fi
 
-          if test "$PROFILE" = extended-stat; then
+          if test "$PROFILE" = extended-stat ||
+             test "$PROFILE" = extended-full; then
             git fetch --no-tags --depth=1 origin \
               "$MINIMAL_MOUNT_RUNTIME_APPROVED_COMMIT"
             for file in \
@@ -525,13 +527,26 @@ jobs:
               scripts/config --file "$out/.config" -e KSU_SUSFS
               scripts/config --file "$out/.config" -e KSU_SUSFS_ENABLE_LOG
               if test "$profile" = minimal-mount ||
-                 test "$profile" = extended-stat; then
+                 test "$profile" = extended-stat ||
+                 test "$profile" = extended-full; then
                 scripts/config --file "$out/.config" \
                   -e KSU_SUSFS_SUS_MOUNT
               fi
-              if test "$profile" = extended-stat; then
+              if test "$profile" = extended-stat ||
+                 test "$profile" = extended-full; then
                 scripts/config --file "$out/.config" \
                   -e KSU_SUSFS_SUS_KSTAT
+              fi
+              if test "$profile" = extended-full; then
+                for option in \
+                  KSU_SUSFS_SUS_PATH \
+                  KSU_SUSFS_SPOOF_UNAME \
+                  KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS \
+                  KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG \
+                  KSU_SUSFS_OPEN_REDIRECT \
+                  KSU_SUSFS_SUS_MAP; do
+                  scripts/config --file "$out/.config" -e "$option"
+                done
               fi
             fi
 
@@ -579,6 +594,19 @@ jobs:
                   CONFIG_KSU_SUSFS_SUS_KSTAT \
                   CONFIG_KSU_SUSFS_SUS_MOUNT > "$expected"
                 ;;
+              extended-full)
+                printf '%s\n' \
+                  CONFIG_KSU_SUSFS \
+                  CONFIG_KSU_SUSFS_ENABLE_LOG \
+                  CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS \
+                  CONFIG_KSU_SUSFS_OPEN_REDIRECT \
+                  CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG \
+                  CONFIG_KSU_SUSFS_SPOOF_UNAME \
+                  CONFIG_KSU_SUSFS_SUS_KSTAT \
+                  CONFIG_KSU_SUSFS_SUS_MAP \
+                  CONFIG_KSU_SUSFS_SUS_MOUNT \
+                  CONFIG_KSU_SUSFS_SUS_PATH > "$expected"
+                ;;
               *)
                 echo "::error::Unknown SUSFS profile: $profile"
                 exit 1
@@ -611,7 +639,8 @@ jobs:
           verify_susfs_profile kernel_experiment/out-smoke/.config smoke
 
           if test "$PROFILE" = minimal-mount ||
-             test "$PROFILE" = extended-stat; then
+             test "$PROFILE" = extended-stat ||
+             test "$PROFILE" = extended-full; then
             configure_tree kernel_experiment out-minimal-mount minimal-mount
             verify_common_config \
               kernel_experiment/out-minimal-mount/.config
@@ -647,6 +676,24 @@ jobs:
                 kernel_experiment/out-extended-stat/.config)
           fi
 
+          if test "$PROFILE" = extended-full; then
+            configure_tree kernel_experiment out-extended-full extended-full
+            verify_common_config \
+              kernel_experiment/out-extended-full/.config
+            verify_susfs_profile \
+              kernel_experiment/out-extended-full/.config extended-full
+
+            cmp \
+              <(sed -E \
+                '/^CONFIG_KSU_SUSFS_(SUS_PATH|SUS_KSTAT|SPOOF_UNAME|HIDE_KSU_SUSFS_SYMBOLS|SPOOF_CMDLINE_OR_BOOTCONFIG|OPEN_REDIRECT|SUS_MAP)=/d;
+                 /^# CONFIG_KSU_SUSFS_(SUS_PATH|SUS_KSTAT|SPOOF_UNAME|HIDE_KSU_SUSFS_SYMBOLS|SPOOF_CMDLINE_OR_BOOTCONFIG|OPEN_REDIRECT|SUS_MAP) is not set$/d' \
+                kernel_experiment/out-minimal-mount/.config) \
+              <(sed -E \
+                '/^CONFIG_KSU_SUSFS_(SUS_PATH|SUS_KSTAT|SPOOF_UNAME|HIDE_KSU_SUSFS_SYMBOLS|SPOOF_CMDLINE_OR_BOOTCONFIG|OPEN_REDIRECT|SUS_MAP)=/d;
+                 /^# CONFIG_KSU_SUSFS_(SUS_PATH|SUS_KSTAT|SPOOF_UNAME|HIDE_KSU_SUSFS_SYMBOLS|SPOOF_CMDLINE_OR_BOOTCONFIG|OPEN_REDIRECT|SUS_MAP) is not set$/d' \
+                kernel_experiment/out-extended-full/.config)
+          fi
+
           kernel_experiment/scripts/diffconfig \
             kernel_baseline/out-baseline/.config \
             kernel_experiment/out-smoke/.config \
@@ -671,6 +718,30 @@ jobs:
             )" -eq 1
             grep -Fqx ' KSU_SUSFS_SUS_KSTAT n -> y' \
               audit/config-minimal-mount-to-extended-stat.diff
+          fi
+          if test "$PROFILE" = extended-full; then
+            kernel_experiment/scripts/diffconfig \
+              kernel_experiment/out-smoke/.config \
+              kernel_experiment/out-minimal-mount/.config \
+              > audit/config-smoke-to-minimal-mount.diff
+            kernel_experiment/scripts/diffconfig \
+              kernel_experiment/out-minimal-mount/.config \
+              kernel_experiment/out-extended-full/.config \
+              > audit/config-minimal-mount-to-extended-full.diff
+            test "$(
+              wc -l < audit/config-minimal-mount-to-extended-full.diff
+            )" -eq 7
+            for option in \
+              KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS \
+              KSU_SUSFS_OPEN_REDIRECT \
+              KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG \
+              KSU_SUSFS_SPOOF_UNAME \
+              KSU_SUSFS_SUS_KSTAT \
+              KSU_SUSFS_SUS_MAP \
+              KSU_SUSFS_SUS_PATH; do
+              grep -Fqx " ${option} n -> y" \
+                audit/config-minimal-mount-to-extended-full.diff
+            done
           fi
 
       - name: Build baseline, smoke, and selected profile
@@ -707,13 +778,18 @@ jobs:
           build_kernel kernel_experiment out-smoke \
             audit/build-smoke.log
           if test "$PROFILE" = minimal-mount ||
-             test "$PROFILE" = extended-stat; then
+             test "$PROFILE" = extended-stat ||
+             test "$PROFILE" = extended-full; then
             build_kernel kernel_experiment out-minimal-mount \
               audit/build-minimal-mount.log
           fi
           if test "$PROFILE" = extended-stat; then
             build_kernel kernel_experiment out-extended-stat \
               audit/build-extended-stat.log
+          fi
+          if test "$PROFILE" = extended-full; then
+            build_kernel kernel_experiment out-extended-full \
+              audit/build-extended-full.log
           fi
 
       - name: Audit warnings, symbols, configuration, and Image growth
@@ -746,7 +822,8 @@ jobs:
           fi
 
           if test "$PROFILE" = minimal-mount ||
-             test "$PROFILE" = extended-stat; then
+             test "$PROFILE" = extended-stat ||
+             test "$PROFILE" = extended-full; then
             normalize_warnings audit/build-minimal-mount.log \
               audit/warnings-minimal-mount.txt
             comm -13 audit/warnings-smoke.txt \
@@ -772,11 +849,25 @@ jobs:
             fi
           fi
 
+          if test "$PROFILE" = extended-full; then
+            normalize_warnings audit/build-extended-full.log \
+              audit/warnings-extended-full.txt
+            comm -13 audit/warnings-minimal-mount.txt \
+              audit/warnings-extended-full.txt \
+              > audit/warnings-new-in-extended-full.txt
+            if test -s audit/warnings-new-in-extended-full.txt; then
+              echo "::error::extended-full introduced new compiler warnings."
+              cat audit/warnings-new-in-extended-full.txt
+              exit 1
+            fi
+          fi
+
           if grep -Eqi \
             'undefined reference|duplicate symbol|ld\.lld: error' \
             audit/build-baseline.log audit/build-smoke.log \
             audit/build-minimal-mount.log \
-            audit/build-extended-stat.log 2>/dev/null; then
+            audit/build-extended-stat.log \
+            audit/build-extended-full.log 2>/dev/null; then
             echo "::error::A linker error signature is present."
             exit 1
           fi
@@ -817,7 +908,8 @@ jobs:
           done
 
           if test "$PROFILE" = minimal-mount ||
-             test "$PROFILE" = extended-stat; then
+             test "$PROFILE" = extended-stat ||
+             test "$PROFILE" = extended-full; then
             for symbol in \
               kernelsu_init \
               ksu_handle_execveat \
@@ -873,6 +965,40 @@ jobs:
             done
           fi
 
+          if test "$PROFILE" = extended-full; then
+            for symbol in \
+              kernelsu_init \
+              ksu_handle_execveat \
+              ksu_handle_faccessat \
+              ksu_handle_vfs_read \
+              ksu_handle_stat \
+              ksu_handle_sys_reboot \
+              susfs_init \
+              susfs_show_version \
+              susfs_show_variant \
+              susfs_get_enabled_features \
+              susfs_enable_log \
+              susfs_extra_works \
+              susfs_add_sus_path \
+              susfs_add_sus_path_loop \
+              susfs_set_hide_sus_mnts_for_non_su_procs \
+              susfs_add_sus_kstat \
+              susfs_update_sus_kstat \
+              susfs_set_uname \
+              susfs_spoof_uname \
+              susfs_set_cmdline_or_bootconfig \
+              susfs_spoof_cmdline_or_bootconfig \
+              susfs_add_open_redirect \
+              susfs_open_redirect_spoof_do_sys_openat \
+              susfs_add_sus_map \
+              ksu_handle_setresuid \
+              ksu_handle_execveat_sucompat \
+              ksu_handle_vfs_fstat; do
+              require_symbol \
+                kernel_experiment/out-extended-full/System.map "$symbol"
+            done
+          fi
+
           awk '{print $3}' kernel_baseline/out-baseline/System.map |
             LC_ALL=C sort -u > audit/symbols-baseline.txt
           awk '{print $3}' kernel_experiment/out-smoke/System.map |
@@ -880,7 +1006,8 @@ jobs:
           comm -3 audit/symbols-baseline.txt audit/symbols-smoke.txt \
             > audit/system-map-baseline-to-smoke.diff
           if test "$PROFILE" = minimal-mount ||
-             test "$PROFILE" = extended-stat; then
+             test "$PROFILE" = extended-stat ||
+             test "$PROFILE" = extended-full; then
             awk '{print $3}' \
               kernel_experiment/out-minimal-mount/System.map |
               LC_ALL=C sort -u > audit/symbols-minimal-mount.txt
@@ -895,6 +1022,14 @@ jobs:
             comm -3 audit/symbols-minimal-mount.txt \
               audit/symbols-extended-stat.txt \
               > audit/system-map-minimal-mount-to-extended-stat.diff
+          fi
+          if test "$PROFILE" = extended-full; then
+            awk '{print $3}' \
+              kernel_experiment/out-extended-full/System.map |
+              LC_ALL=C sort -u > audit/symbols-extended-full.txt
+            comm -3 audit/symbols-minimal-mount.txt \
+              audit/symbols-extended-full.txt \
+              > audit/system-map-minimal-mount-to-extended-full.diff
           fi
 
           "$GITHUB_WORKSPACE/toolchains/clang/bin/llvm-nm" -u \
@@ -912,6 +1047,16 @@ jobs:
             if grep -Eqi 'susfs|ksu' \
               audit/unresolved-extended-stat.txt; then
               echo "::error::An unresolved extended-stat KSU/SUSFS symbol remains."
+              exit 1
+            fi
+          fi
+          if test "$PROFILE" = extended-full; then
+            "$GITHUB_WORKSPACE/toolchains/clang/bin/llvm-nm" -u \
+              kernel_experiment/out-extended-full/vmlinux \
+              > audit/unresolved-extended-full.txt || true
+            if grep -Eqi 'susfs|ksu' \
+              audit/unresolved-extended-full.txt; then
+              echo "::error::An unresolved extended-full KSU/SUSFS symbol remains."
               exit 1
             fi
           fi
@@ -939,7 +1084,8 @@ jobs:
 
           selected_out=out-smoke
           if test "$PROFILE" = minimal-mount ||
-             test "$PROFILE" = extended-stat; then
+             test "$PROFILE" = extended-stat ||
+             test "$PROFILE" = extended-full; then
             selected_out=out-minimal-mount
             minimal_size="$(
               stat -c '%s' \
@@ -969,6 +1115,21 @@ jobs:
             test "$((extended_size * 100))" \
               -le "$((baseline_size * (100 + MAX_IMAGE_GROWTH_PERCENT)))"
           fi
+          if test "$PROFILE" = extended-full; then
+            selected_out=out-extended-full
+            full_size="$(
+              stat -c '%s' \
+                kernel_experiment/out-extended-full/arch/arm64/boot/Image
+            )"
+            full_delta="$((full_size - baseline_size))"
+            {
+              echo "extended_full_bytes=$full_size"
+              echo "extended_full_delta_bytes=$full_delta"
+            } >> audit/image-size-report.txt
+            test "$full_delta" -le "$MAX_IMAGE_GROWTH_BYTES"
+            test "$((full_size * 100))" \
+              -le "$((baseline_size * (100 + MAX_IMAGE_GROWTH_PERCENT)))"
+          fi
           echo "SELECTED_OUT=$selected_out" >> "$GITHUB_ENV"
 
           git -C kernel_experiment diff --name-only \
@@ -987,7 +1148,8 @@ jobs:
             kernel_experiment/out-smoke/arch/arm64/boot/Image \
             > audit/kernel-build-files.sha256
           if test "$PROFILE" = minimal-mount ||
-             test "$PROFILE" = extended-stat; then
+             test "$PROFILE" = extended-stat ||
+             test "$PROFILE" = extended-full; then
             sha256sum \
               kernel_experiment/out-minimal-mount/.config \
               kernel_experiment/out-minimal-mount/System.map \
@@ -999,6 +1161,13 @@ jobs:
               kernel_experiment/out-extended-stat/.config \
               kernel_experiment/out-extended-stat/System.map \
               kernel_experiment/out-extended-stat/arch/arm64/boot/Image \
+              >> audit/kernel-build-files.sha256
+          fi
+          if test "$PROFILE" = extended-full; then
+            sha256sum \
+              kernel_experiment/out-extended-full/.config \
+              kernel_experiment/out-extended-full/System.map \
+              kernel_experiment/out-extended-full/arch/arm64/boot/Image \
               >> audit/kernel-build-files.sha256
           fi
 

@@ -62,6 +62,9 @@ They are not generated or rewritten during a build.
    still exactly match commit
    `73c1484584a40dd41a9ccc2d0593d47de5b66dc6`, then enables only
    `CONFIG_KSU_SUSFS_SUS_KSTAT`.
+   An `extended-full` request uses the same immutable-patch gate and enables
+   all nine child options still defined by pinned official SUSFS v2.2. It must
+   not reintroduce deprecated try-umount, automatic mount or overlay options.
 7. Verify manual-hook and SUSFS symbols, compare final configs/System.map/Image
    size, require both modern and Linux 4.19 SID-cache call sites, and fail on
    build warnings or abnormal growth.
@@ -96,7 +99,10 @@ No CI artifact is approved for direct flashing.
    list to add exactly `SUS_KSTAT`, keep every persistent kstat rule empty for
    the first boot, and add one harmless temporary-file rule only after the boot
    checks pass.
-10. On any panic, oops, BUG, use-after-free, lockup, SELinux failure or functional
+10. Treat `extended-full` as a separate high-risk test. Disable the userspace
+    module and clear all persistent SUSFS rule lists for the first temporary
+    boot; confirm the feature list before adding any rule or spoof value.
+11. On any panic, oops, BUG, use-after-free, lockup, SELinux failure or functional
    regression, restore the saved active boot image in Fastboot, collect
    dmesg/pstore and stop the experiment.
 

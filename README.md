@@ -5,11 +5,11 @@
 > (`kebab`) LineageOS 23.2 kernel revision. **TESTING ONLY / 仅供测试.** The
 > `smoke` and `minimal-mount` profiles boot on the development device, but the
 > planned 24-hour stability observation was deliberately skipped. The newer
-> `extended-stat` profile is build-only until it separately passes the device
-> gates. Long-term stability is unknown and crashes, boot failure, or data loss
-> remain possible. Do not use it on another device, do not flash an Actions ZIP
-> directly, and do not treat the results below as a production-stability
-> guarantee.
+> `extended-stat` and `extended-full` profiles are build-only until they
+> separately pass the device gates. Long-term stability is unknown and crashes,
+> boot failure, or data loss remain possible. Do not use it on another device,
+> do not flash an Actions ZIP directly, and do not treat the results below as a
+> production-stability guarantee.
 
 ## Current status
 
@@ -44,6 +44,13 @@ and remains testing-only.
 top of the runtime-tested `minimal-mount` feature set. `SUS_PATH`, `SUS_MAP`,
 uname/cmdline spoofing, open redirect and symbol hiding remain forced off. No
 `extended-stat` artifact is runtime-approved merely because it compiles.
+
+`extended-full` is a separate high-risk convenience profile requested by the
+tester. It enables every feature still present in the pinned official v2.2
+Kconfig: `SUS_PATH`, `SUS_MOUNT`, `SUS_KSTAT`, `SUS_MAP`, uname and cmdline
+spoofing, open redirect, symbol hiding and logging. Deprecated v1.5-era mount
+and try-umount options remain absent. This all-at-once profile does not replace
+the staged artifacts or their recovery value.
 
 This public repository builds a device-specific SukiSU Ultra kernel for:
 
@@ -107,12 +114,14 @@ added.
 The original `build-sukisu.yml` still disables SUSFS unconditionally and is
 kept byte-for-byte identical to `main`. The separate
 `build-sukisu-susfs.yml` workflow pins official SUSFS v2.2 source commit
-`8eade9cd4aed3efddc9ff30b2e48d2d9667ad77d` and offers three profiles:
+`8eade9cd4aed3efddc9ff30b2e48d2d9667ad77d` and offers four profiles:
 
 - `smoke`: SUSFS core plus logging, with every hiding feature disabled.
 - `minimal-mount`: the smoke configuration plus `SUS_MOUNT` only.
 - `extended-stat`: `minimal-mount` plus `SUS_KSTAT` only; build-only until its
   separate controlled device test succeeds.
+- `extended-full`: all options still provided by the pinned official v2.2
+  Kconfig; build-only and higher risk, with deprecated options still excluded.
 
 The exact-base v2.1 SM8250 case is used only to locate Linux 4.19 integration
 points. Its KernelSU-Next tree, KPM, input hooks, defconfig and third-party
