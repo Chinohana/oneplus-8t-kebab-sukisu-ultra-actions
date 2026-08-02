@@ -450,14 +450,14 @@ diff --git a/kernel/selinux/sepolicy.h b/kernel/selinux/sepolicy.h
 index 870fd67..0d88112 100644
 --- a/kernel/selinux/sepolicy.h
 +++ b/kernel/selinux/sepolicy.h
-@@ -7,6 +7,9 @@
+@@ -7,6 +7,10 @@
  struct selinux_policy *ksu_dup_sepolicy(struct selinux_policy *old_pol);
  
  void ksu_destroy_sepolicy(struct selinux_policy *orig);
 +#else
 +struct selinux_ss *ksu_dup_selinux_ss(struct selinux_ss *old_ss);
++extern struct selinux_ss *backup_selinux_ss;
 +void ksu_destroy_selinux_ss(struct selinux_ss *ss);
  #endif
  
  // Operation on types
-
