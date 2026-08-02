@@ -1,0 +1,463 @@
+diff --git a/kernel/Kconfig b/kernel/Kconfig
+index 0cc760f..22a43d8 100644
+--- a/kernel/Kconfig
++++ b/kernel/Kconfig
+@@ -22,6 +22,14 @@ config KSU_DEBUG
+ 	help
+ 	  Enable KernelSU debug mode.
+ 
++config KSU_SELINUX_HIDE_4_19
++	bool "Experimental SELinux modification hiding for Linux 4.19"
++	depends on KSU
++	default n
++	help
++	  Backport SukiSU's SELinux modification hiding feature to the
++	  legacy Linux 4.19 SELinux state layout. This is experimental.
++
+ config KPM
+     bool "Enable SukiSU KPM"
+     depends on KSU && 64BIT
+diff --git a/kernel/feature/selinux_hide.c b/kernel/feature/selinux_hide.c
+index 31b2de8..ce755fe 100644
+--- a/kernel/feature/selinux_hide.c
++++ b/kernel/feature/selinux_hide.c
+@@ -40,17 +40,25 @@ DEFINE_STATIC_KEY_FALSE(fake_status_initialize_key);
+ #endif
+ struct page *fake_status = NULL;
+ 
++#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 10, 0)
++#define KSU_SELINUX_STATUS_LOCK (selinux_state.ss->status_lock)
++#define KSU_SELINUX_STATUS_PAGE (selinux_state.ss->status_page)
++#else
++#define KSU_SELINUX_STATUS_LOCK (selinux_state.status_lock)
++#define KSU_SELINUX_STATUS_PAGE (selinux_state.status_page)
++#endif
++
+ void initialize_fake_status()
+ {
+-    mutex_lock(&selinux_state.status_lock);
++    mutex_lock(&KSU_SELINUX_STATUS_LOCK);
+     if (fake_status)
+         goto out;
+-    if (!selinux_state.status_page) {
++    if (!KSU_SELINUX_STATUS_PAGE) {
+         pr_warn("initialize_fake_status: status_page not exist\n");
+         goto out;
+     }
+ 
+-    struct selinux_kernel_status *status = page_address(selinux_state.status_page);
++    struct selinux_kernel_status *status = page_address(KSU_SELINUX_STATUS_PAGE);
+     if (!status->enforcing) {
+         pr_warn("initialize_fake_status: skip not enforcing\n");
+         goto out;
+@@ -70,7 +78,7 @@ void initialize_fake_status()
+             new_status->policyload, new_status->enforcing);
+ 
+ out:
+-    mutex_unlock(&selinux_state.status_lock);
++    mutex_unlock(&KSU_SELINUX_STATUS_LOCK);
+ }
+ 
+ void ksu_selinux_hide_handle_second_stage()
+@@ -93,15 +101,26 @@ void ksu_selinux_hide_handle_post_fs_data()
+ static int ksu_selinux_hide_enable()
+ {
+     pr_info("selinux_hide: init selinux hide\n");
++#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 10, 0)
++    if (!backup_selinux_ss) {
++        pr_err("no Linux 4.19 SELinux backup available, save feature and reboot to retry\n");
++        return -EAGAIN;
++    }
++#else
+     if (!backup_sepolicy) {
+         pr_err("no backup sepolicy available, please save feature and reboot to retry!\n");
+         return -EAGAIN;
+     }
++#endif
+ 
+ #if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0)
+-#else
++#elif LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
+     fake_state.initialized = true;
+     fake_state.policy = backup_sepolicy;
++#else
++    fake_state.initialized = true;
++    fake_state.ss = backup_selinux_ss;
++    fake_state.avc = selinux_state.avc;
+ #endif
+ 
+     return 0;
+@@ -119,18 +138,22 @@ static int selinux_hide_feature_set(u64 value)
+     int ret = 0;
+     pr_info("selinux_hide: set to %d\n", enable);
+     mutex_lock(&selinux_hide_mutex);
+-    ksu_selinux_hide_enabled = enable;
+     if (enable) {
+         if (!ksu_selinux_hide_running) {
+             ret = ksu_selinux_hide_enable();
+             if (!ret) {
+-                ksu_selinux_hide_running = true;
++                WRITE_ONCE(ksu_selinux_hide_running, true);
++                WRITE_ONCE(ksu_selinux_hide_enabled, true);
++            } else {
++                WRITE_ONCE(ksu_selinux_hide_running, false);
++                WRITE_ONCE(ksu_selinux_hide_enabled, false);
+             }
+         }
+     } else {
+         if (ksu_selinux_hide_running) {
+-            ksu_selinux_hide_running = false;
++            WRITE_ONCE(ksu_selinux_hide_running, false);
+         }
++        WRITE_ONCE(ksu_selinux_hide_enabled, false);
+     }
+     pr_info("selinux_hide: ksu_selinux_hide_enabled: %d, ksu_selinux_hide_running: %d\n",
+             ksu_selinux_hide_enabled, ksu_selinux_hide_running);
+@@ -161,22 +184,33 @@ void __exit ksu_selinux_hide_exit(void)
+     }
+     mutex_unlock(&selinux_hide_mutex);
+     ksu_unregister_feature_handler(KSU_FEATURE_SELINUX_HIDE);
+-    mutex_lock(&selinux_state.status_lock);
+-    if (fake_status)
+-        __free_page(fake_status);
+-    fake_status = NULL;
+-    mutex_unlock(&selinux_state.status_lock);
++    /* Built-in kernels keep fake_status for the kernel lifetime. It may be
++     * mmap'ed by userspace, so freeing it here would require page ownership
++     * tracking that the legacy SELinux status interface does not provide. */
+ }
+ 
+ void ksu_selinux_hide_drop_backup_if_unused()
+ {
+     mutex_lock(&selinux_hide_mutex);
+-    if (!ksu_selinux_hide_running && backup_sepolicy) {
++    if (!ksu_selinux_hide_running &&
++#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 10, 0)
++        backup_selinux_ss
++#else
++        backup_sepolicy
++#endif
++    ) {
++#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 10, 0)
++        pr_info("selinux_hide is not enabled - drop Linux 4.19 SELinux backup\n");
++        ksu_destroy_selinux_ss(backup_selinux_ss);
++        backup_selinux_ss = NULL;
++        fake_state.ss = NULL;
++#else
+         pr_info("selinux_hide is not enabled - drop backup_sepolicy\n");
+         sidtab_destroy(backup_sepolicy->sidtab);
+         kfree(backup_sepolicy->sidtab);
+         ksu_destroy_sepolicy(backup_sepolicy);
+         backup_sepolicy = NULL;
++#endif
+     }
+     mutex_unlock(&selinux_hide_mutex);
+ }
+diff --git a/kernel/feature/selinux_hide.h b/kernel/feature/selinux_hide.h
+index 5a04371..a1dc5f5 100644
+--- a/kernel/feature/selinux_hide.h
++++ b/kernel/feature/selinux_hide.h
+@@ -1,10 +1,25 @@
+ #ifndef __KSU_H_SELINUX_HIDE
+ #define __KSU_H_SELINUX_HIDE
+ 
++#include <linux/types.h>
++#include <linux/jump_label.h>
++
++struct page;
++struct selinux_state;
++
++extern bool ksu_selinux_hide_enabled;
++extern bool ksu_selinux_hide_running;
++extern struct selinux_state fake_state;
++extern struct page *fake_status;
++#ifdef KSU_COMPAT_USE_STATIC_KEY
++extern struct static_key_false fake_status_initialize_key;
++#endif
++
+ void ksu_selinux_hide_init();
+ void ksu_selinux_hide_exit();
+ void ksu_selinux_hide_drop_backup_if_unused();
+ void ksu_selinux_hide_handle_second_stage();
+ void ksu_selinux_hide_handle_post_fs_data();
++void initialize_fake_status();
+ 
+ #endif
+diff --git a/kernel/include/uapi/feature.h b/kernel/include/uapi/feature.h
+index e1c9258..8deafbd 100644
+--- a/kernel/include/uapi/feature.h
++++ b/kernel/include/uapi/feature.h
+@@ -6,7 +6,7 @@ enum ksu_feature_id {
+     KSU_FEATURE_KERNEL_UMOUNT = 1,
+     KSU_FEATURE_SULOG = 2,
+     KSU_FEATURE_ADB_ROOT = 3,
+-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0) || defined(CONFIG_KSU_SELINUX_HIDE_4_19)
+     KSU_FEATURE_SELINUX_HIDE = 4,
+ #endif
+ 
+diff --git a/kernel/ksu.c b/kernel/ksu.c
+index ba495d5..482279a 100644
+--- a/kernel/ksu.c
++++ b/kernel/ksu.c
+@@ -30,7 +30,7 @@
+ #include "feature/kernel_umount.h"
+ #include "feature/sucompat.h"
+ #include "feature/sulog.h"
+-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0) || defined(CONFIG_KSU_SELINUX_HIDE_4_19)
+ #include "feature/selinux_hide.h"
+ #endif
+ #include "runtime/ksud.h"
+@@ -81,7 +81,7 @@
+ #include "feature/kernel_umount.c"
+ #include "feature/sucompat.c"
+ #include "feature/sulog.c"
+-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0) || defined(CONFIG_KSU_SELINUX_HIDE_4_19)
+ #include "feature/selinux_hide.c"
+ #endif
+ #include "runtime/ksud.c"
+@@ -143,7 +143,7 @@ int __init kernelsu_init(void)
+ 
+     ksu_adb_root_init();
+ 
+-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0) || defined(CONFIG_KSU_SELINUX_HIDE_4_19)
+     ksu_selinux_hide_init();
+ #endif
+ 
+diff --git a/kernel/runtime/ksud.c b/kernel/runtime/ksud.c
+index ee0ee75..63b69ec 100644
+--- a/kernel/runtime/ksud.c
++++ b/kernel/runtime/ksud.c
+@@ -61,7 +61,7 @@ void on_post_fs_data(void)
+ #else
+     stop_input_hook();
+ #endif
+-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0) || defined(CONFIG_KSU_SELINUX_HIDE_4_19)
+     ksu_selinux_hide_handle_post_fs_data();
+ #endif
+ }
+@@ -100,7 +100,7 @@ void on_boot_completed(void)
+     ksu_boot_completed = true;
+     pr_info("on_boot_completed!\n");
+     track_throne(true);
+-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0) || defined(CONFIG_KSU_SELINUX_HIDE_4_19)
+     ksu_selinux_hide_drop_backup_if_unused();
+ #endif
+ }
+@@ -225,7 +225,7 @@ int ksu_handle_execveat_ksud(int *fd, struct filename **filename_ptr,
+             char buf[16];
+             if (check_argv(*argv, 1, "second_stage", buf, sizeof(buf))) {
+                 pr_info("/system/bin/init second_stage executed\n");
+-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0) || defined(CONFIG_KSU_SELINUX_HIDE_4_19)
+                 ksu_selinux_hide_handle_second_stage();
+ #endif
+                 apply_kernelsu_rules();
+@@ -299,7 +299,7 @@ int ksu_handle_execveat_ksud(int *fd, struct filename **filename_ptr, struct use
+         char buf[16];
+         if (!init_second_stage_executed && check_argv(*argv, 1, "second_stage", buf, sizeof(buf))) {
+             pr_info("/system/bin/init second_stage executed\n");
+-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0) || defined(CONFIG_KSU_SELINUX_HIDE_4_19)
+             ksu_selinux_hide_handle_second_stage();
+ #endif
+             apply_kernelsu_rules();
+diff --git a/kernel/selinux/rules.c b/kernel/selinux/rules.c
+index 778cd58..ce05756 100644
+--- a/kernel/selinux/rules.c
++++ b/kernel/selinux/rules.c
+@@ -1,6 +1,8 @@
+ #if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
+ #define SELINUX_POLICY_INSTEAD_SELINUX_SS
+ struct selinux_policy *backup_sepolicy;
++#else
++struct selinux_ss *backup_selinux_ss;
+ #endif
+ 
+ #define ALL NULL
+@@ -205,12 +207,22 @@ out_unlock:
+ #else
+ 
+     cpumask_t old_mask;
++    struct selinux_ss *snapshot = NULL;
+     db = get_policydb();
+ 
+     rwlock_t *lock = ksu_get_policy_rwlock();
+     if (!lock)
+         goto do_stop_machine;
+ 
++    if (!backup_selinux_ss) {
++        snapshot = ksu_dup_selinux_ss(selinux_state.ss);
++        if (IS_ERR(snapshot)) {
++            pr_err("failed to create Linux 4.19 SELinux backup: %ld\n",
++                   PTR_ERR(snapshot));
++            snapshot = NULL;
++        }
++    }
++
+     /*
+ 	 * HACK: write_lock() is held with preempt enabled. DO NOT let the
+ 	 * task be migrated to any other CPU than the current CPU. And since
+@@ -224,6 +236,16 @@ out_unlock:
+     write_lock(lock);
+     preempt_enable();
+ 
++    if (snapshot) {
++        if (snapshot->latest_granting == selinux_state.ss->latest_granting) {
++            backup_selinux_ss = snapshot;
++            snapshot = NULL;
++            pr_info("Linux 4.19 SELinux backup created\n");
++        } else {
++            pr_warn("SELinux policy changed while creating backup; hiding remains unavailable\n");
++        }
++    }
++
+     // we do this dance since both kernel and userspace can trigger this
+     if (likely(current && current->mm))
+         goto has_current_mm;
+@@ -245,6 +267,8 @@ out_unlock:
+     preempt_disable();
+     write_unlock(lock);
+     set_cpus_allowed_ptr(current, &old_mask);
++    if (snapshot)
++        ksu_destroy_selinux_ss(snapshot);
+     goto out_flush;
+ 
+ do_stop_machine:
+diff --git a/kernel/selinux/sepolicy.c b/kernel/selinux/sepolicy.c
+index 2934778..6d332c4 100644
+--- a/kernel/selinux/sepolicy.c
++++ b/kernel/selinux/sepolicy.c
+@@ -1109,13 +1109,14 @@ bool ksu_genfscon(struct policydb *db, const char *fs_name, const char *path, co
+     return add_genfscon(db, fs_name, path, ctx);
+ }
+ 
++#include "ss/services.h"
++
+ #if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
+ #include "ss/avtab.h"
+ #include "ss/constraint.h"
+ #include "ss/ebitmap.h"
+ #include "ss/hashtab.h"
+ #include "ss/policydb.h"
+-#include "ss/services.h"
+ 
+ // ======== sepolicy ========
+ 
+@@ -1198,4 +1199,96 @@ out_free_data:
+ 
+     return ERR_PTR(ret);
+ }
++#else
++void ksu_destroy_selinux_ss(struct selinux_ss *ss)
++{
++    if (!ss)
++        return;
++
++    if (ss->sidtab) {
++        sidtab_destroy(ss->sidtab);
++        kfree(ss->sidtab);
++    }
++    kfree(ss->map.mapping);
++    policydb_destroy(&ss->policydb);
++    kfree(ss);
++}
++
++struct selinux_ss *ksu_dup_selinux_ss(struct selinux_ss *old_ss)
++{
++    struct selinux_ss *new_ss;
++    struct policy_file fp;
++    struct selinux_mapping *map_copy = NULL;
++    void *data = NULL;
++    size_t len;
++    u32 latest_granting;
++    u16 map_size;
++    int ret;
++
++    if (!old_ss)
++        return ERR_PTR(-EINVAL);
++
++    len = old_ss->policydb.len;
++    data = vmalloc(len);
++    if (!data)
++        return ERR_PTR(-ENOMEM);
++
++    fp.data = data;
++    fp.len = len;
++    read_lock(&old_ss->policy_rwlock);
++    map_size = old_ss->map.size;
++    map_copy = kmemdup(old_ss->map.mapping,
++                       sizeof(*old_ss->map.mapping) * map_size,
++                       GFP_ATOMIC);
++    if (!map_copy)
++        ret = -ENOMEM;
++    else
++        ret = policydb_write(&old_ss->policydb, &fp);
++    latest_granting = old_ss->latest_granting;
++    read_unlock(&old_ss->policy_rwlock);
++    if (ret)
++        goto out_free_data;
++
++    new_ss = kzalloc(sizeof(*new_ss), GFP_KERNEL);
++    if (!new_ss) {
++        ret = -ENOMEM;
++        goto out_free_data;
++    }
++
++    fp.data = data;
++    fp.len = len;
++    ret = policydb_read(&new_ss->policydb, &fp);
++    if (ret)
++        goto out_free_ss;
++    new_ss->policydb.len = old_ss->policydb.len;
++
++    new_ss->sidtab = kzalloc(sizeof(*new_ss->sidtab), GFP_KERNEL);
++    if (!new_ss->sidtab) {
++        ret = -ENOMEM;
++        goto out_destroy_policydb;
++    }
++    ret = policydb_load_isids(&new_ss->policydb, new_ss->sidtab);
++    if (ret)
++        goto out_free_sidtab;
++
++    rwlock_init(&new_ss->policy_rwlock);
++    mutex_init(&new_ss->status_lock);
++    new_ss->latest_granting = latest_granting;
++    new_ss->map.size = map_size;
++    new_ss->map.mapping = map_copy;
++    kvfree(data);
++    return new_ss;
++
++out_free_sidtab:
++    kfree(new_ss->sidtab);
++    new_ss->sidtab = NULL;
++out_destroy_policydb:
++    policydb_destroy(&new_ss->policydb);
++out_free_ss:
++    kfree(new_ss);
++out_free_data:
++    kfree(map_copy);
++    kvfree(data);
++    return ERR_PTR(ret);
++}
+ #endif
+diff --git a/kernel/selinux/sepolicy.h b/kernel/selinux/sepolicy.h
+index 870fd67..0d88112 100644
+--- a/kernel/selinux/sepolicy.h
++++ b/kernel/selinux/sepolicy.h
+@@ -7,6 +7,9 @@
+ struct selinux_policy *ksu_dup_sepolicy(struct selinux_policy *old_pol);
+ 
+ void ksu_destroy_sepolicy(struct selinux_policy *orig);
++#else
++struct selinux_ss *ksu_dup_selinux_ss(struct selinux_ss *old_ss);
++void ksu_destroy_selinux_ss(struct selinux_ss *ss);
+ #endif
+ 
+ // Operation on types
+

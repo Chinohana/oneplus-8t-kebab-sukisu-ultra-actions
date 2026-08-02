@@ -68,8 +68,18 @@ SUSFS v2.2 废弃，因此没有重新加入。KPM 和 kprobes 也保持关闭�
 | [`main`](https://github.com/Chinohana/oneplus-8t-kebab-sukisu-ultra-actions/tree/main) | 当前 SUSFS v2.2 完整版，默认路线 |
 | [`legacy`](https://github.com/Chinohana/oneplus-8t-kebab-sukisu-ultra-actions/tree/legacy) | 不含 SUSFS 的旧版 SukiSU 内核，固定在 `1bc3fb3` |
 | `experiment/susfs-v2.2-sm8250-4.19` | SUSFS 移植过程的历史开发分支 |
+| `experiment/selinux-hide-sm8250-4.19` | Linux 4.19“隐藏 SELinux 修改”实验；尚未真机验证 |
 
 只想使用原来的无 SUSFS 版本时，请切换到 `legacy`。
+
+## SELinux 隐藏实验
+
+当前实验分支为固定的 Linux 4.19 内核回移植 SukiSU“隐藏 SELinux 修改”功能。
+该功能默认只编译为可选开关，不会自动开启，也不会把 SELinux 切换为 Permissive。
+
+这是高风险、尚未完成真机启动验证的实验产物。请勿直接刷写，也不要用于其他设备。
+实现边界、构建标识和后续安全测试步骤见
+[`docs/SELINUX-HIDE-EXPERIMENT.md`](docs/SELINUX-HIDE-EXPERIMENT.md)。
 
 ## 云端构建
 
