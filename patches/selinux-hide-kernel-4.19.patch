@@ -1,0 +1,137 @@
+diff --git a/security/selinux/hooks.c b/security/selinux/hooks.c
+--- a/security/selinux/hooks.c
++++ b/security/selinux/hooks.c
+@@ -6306,6 +6306,11 @@ static int selinux_getprocattr(struct task_struct *p,
+ 	return error;
+ }
+ 
++#ifdef CONFIG_KSU_SELINUX_HIDE_4_19
++extern bool ksu_selinux_hide_running;
++extern struct selinux_state fake_state;
++#endif
++
+ static int selinux_setprocattr(const char *name, void *value, size_t size)
+ {
+ 	struct task_security_struct *tsec;
+@@ -6313,6 +6318,9 @@ static int selinux_setprocattr(const char *name, void *value, size_t size)
+ 	u32 mysid = current_sid(), sid = 0, ptsid;
+ 	int error;
+ 	char *str = value;
++#ifdef CONFIG_KSU_SELINUX_HIDE_4_19
++	struct selinux_state *context_state = &selinux_state;
++#endif
+ 
+ 	/*
+ 	 * Basic control over ability to set these attributes at all.
+@@ -6340,6 +6348,12 @@ static int selinux_setprocattr(const char *name, void *value, size_t size)
+ 	if (error)
+ 		return error;
+ 
++#ifdef CONFIG_KSU_SELINUX_HIDE_4_19
++	if (current_uid().val >= 10000 &&
++	    READ_ONCE(ksu_selinux_hide_running) && !strcmp(name, "current"))
++		context_state = &fake_state;
++#endif
++
+ 	/* Obtain a SID for the context, if one was specified. */
+ 	if (size && str[0] && str[0] != '\n') {
+ 		if (str[size-1] == '\n') {
+@@ -6347,6 +6361,12 @@ static int selinux_setprocattr(const char *name, void *value, size_t size)
+ 			str[size-1] = 0;
+ 			size--;
+ 		}
+-		error = security_context_to_sid(&selinux_state, value, size,
++		error = security_context_to_sid(
++#ifdef CONFIG_KSU_SELINUX_HIDE_4_19
++						context_state,
++#else
++						&selinux_state,
++#endif
++						value, size,
+ 						&sid, GFP_KERNEL);
+ 		if (error == -EINVAL && !strcmp(name, "fscreate")) {
+diff --git a/security/selinux/selinuxfs.c b/security/selinux/selinuxfs.c
+--- a/security/selinux/selinuxfs.c
++++ b/security/selinux/selinuxfs.c
+@@ -29,5 +29,6 @@
+ #include <linux/kobject.h>
+ #include <linux/ctype.h>
++#include <linux/jump_label.h>
+ 
+ /* selinuxfs pseudo filesystem for exporting the security policy API.
+    Based on the proc code and the fs/nfsd/nfsctl.c code. */
+@@ -40,5 +40,13 @@
+ #include "objsec.h"
+ #include "conditional.h"
+ 
++#ifdef CONFIG_KSU_SELINUX_HIDE_4_19
++extern bool ksu_selinux_hide_running;
++extern struct selinux_state fake_state;
++extern struct page *fake_status;
++extern struct static_key_false fake_status_initialize_key;
++extern void initialize_fake_status(void);
++#endif
++
+ enum sel_inos {
+ 	SEL_ROOT_INO = 2,
+@@ -231,6 +239,22 @@ static int sel_open_handle_status(struct inode *inode, struct file *filp)
+ 	filp->private_data = status;
+ 
++#ifdef CONFIG_KSU_SELINUX_HIDE_4_19
++	if (static_branch_unlikely(&fake_status_initialize_key) && !READ_ONCE(fake_status))
++		initialize_fake_status();
++#endif
+ 	return 0;
+ }
+ 
++#ifdef CONFIG_KSU_SELINUX_HIDE_4_19
++static int ksu_sel_open_handle_status(struct inode *inode, struct file *filp)
++{
++	if (current_uid().val >= 10000 && READ_ONCE(ksu_selinux_hide_running) &&
++	    READ_ONCE(fake_status)) {
++		filp->private_data = READ_ONCE(fake_status);
++		return 0;
++	}
++	return sel_open_handle_status(inode, filp);
++}
++#endif
++
+ static ssize_t sel_read_handle_status(struct file *filp, char __user *buf,
+@@ -269,6 +290,10 @@ static int sel_mmap_handle_status(struct file *filp,
+ }
+ 
+ static const struct file_operations sel_handle_status_ops = {
++#ifdef CONFIG_KSU_SELINUX_HIDE_4_19
++	.open		= ksu_sel_open_handle_status,
++#else
+ 	.open		= sel_open_handle_status,
++#endif
+ 	.read		= sel_read_handle_status,
+ 	.mmap		= sel_mmap_handle_status,
+@@ -392,4 +417,8 @@ static int sel_open_policy(struct inode *inode, struct file *filp)
+ 	struct policy_load_memory *plm = NULL;
+ 	int rc;
+ 
++#ifdef CONFIG_KSU_SELINUX_HIDE_4_19
++	if (current_uid().val >= 10000 && READ_ONCE(ksu_selinux_hide_running))
++		state = &fake_state;
++#endif
+ 	BUG_ON(filp->private_data);
+@@ -513,4 +542,8 @@ static ssize_t sel_write_context(struct file *file, char *buf, size_t size)
+ 	u32 sid, len;
+ 	ssize_t length;
+ 
++#ifdef CONFIG_KSU_SELINUX_HIDE_4_19
++	if (current_uid().val >= 10000 && READ_ONCE(ksu_selinux_hide_running))
++		state = &fake_state;
++#endif
+ 	length = avc_has_perm(&selinux_state,
+@@ -755,4 +788,8 @@ static ssize_t sel_write_access(struct file *file, char *buf, size_t size)
+ 	struct av_decision avd;
+ 	ssize_t length;
+ 
++#ifdef CONFIG_KSU_SELINUX_HIDE_4_19
++	if (current_uid().val >= 10000 && READ_ONCE(ksu_selinux_hide_running))
++		state = &fake_state;
++#endif
+ 	length = avc_has_perm(&selinux_state,
