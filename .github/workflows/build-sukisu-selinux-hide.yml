@@ -443,6 +443,10 @@ jobs:
             "$ksu_dir/feature/selinux_hide.c"
           grep -Fq 'selinux_state.ss->status_lock' \
             "$ksu_dir/feature/selinux_hide.c"
+          grep -Fq 'ksu_selinux_hide_backup_was_dropped' \
+            "$ksu_dir/feature/selinux_hide.c"
+          grep -Fq 'selinux_hide: queued for the next boot' \
+            "$ksu_dir/feature/selinux_hide.c"
           grep -Fq 'read_lock(&old_ss->policy_rwlock);' \
             "$ksu_dir/selinux/sepolicy.c"
           grep -Fq 'snapshot->latest_granting == selinux_state.ss->latest_granting' \
