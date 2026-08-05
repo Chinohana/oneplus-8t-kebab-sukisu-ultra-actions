@@ -441,6 +441,8 @@ jobs:
 
           grep -Fq 'fake_state.ss = backup_selinux_ss;' \
             "$ksu_dir/feature/selinux_hide.c"
+          grep -Fq 'fake_state = selinux_state;' \
+            "$ksu_dir/feature/selinux_hide.c"
           grep -Fq 'selinux_state.ss->status_lock' \
             "$ksu_dir/feature/selinux_hide.c"
           grep -Fq 'ksu_selinux_hide_backup_was_dropped' \
