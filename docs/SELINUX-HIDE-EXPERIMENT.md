@@ -11,56 +11,47 @@
 也不会修改 SUSFS 的 AVC 日志伪装。`main` 内核不包含该实验配置，管理器会
 显示“内核不支持此特性”，这是预期行为。
 
-### 2026-08-05 真机验证结果（提交 `634c75a`）
+### 2026-08-05 真机状态（重要更正）
 
-在开发机 `boot_b` 上完成以下验证：
+此前的“验证成功”结论是错误的。实际开启功能后系统仍会卡在“手机正在启动”，
+根因是 4.19 移植额外钩住了 `selinux_setprocattr`（`/proc/self/attr/current`）：
+Zygote 为应用（UID ≥ 10000）设置 SELinux 上下文时被重定向到假策略，导致
+`selinux_android_setcontext()` 失败、`org.codeaurora.ims` 等应用反复崩溃，
+system_server 看门狗持续触发，系统无法完成启动。官方 SukiSU 的隐藏功能
+只钩 selinuxfs（policy/status/context/access），从不钩 `setprocattr`。
 
-- 功能关闭状态下临时启动与刷入 `boot_b` 均正常：ADB、root、SELinux
-  Enforcing、存储解密、SUSFS 与关键服务全部正常。
-- 通过 `ksud feature set selinux_hide 1` + `save` 排队到下次启动，冷启动后
-  内核日志确认 `ksu_selinux_hide_running: 1`，系统正常进入桌面，未再出现
-  “手机正在启动”卡死。
-- 隐藏语义核验：应用 UID（≥10000）读取 `/sys/fs/selinux/policy` 与 `status`
-  得到与 root/系统不同的内容（无 KSU 规则的原版策略与独立 status 页）；对
-  `u:r:ksu:s0` 的 context/access 查询在应用 UID 下失败、在系统 UID 下成功，
-  与“系统进程始终使用实时策略”的设计一致。
-- 连续两次冷启动通过，pstore 为空，dmesg 无 panic/oops/BUG/UAF/lockup。
+当前修复（实验分支最新提交）：
 
-> 说明：锁屏状态下 SukiSU 管理器无法在前台启动属正常现象，解锁后可正常
-> 打开并看到该开关处于启用状态。
+- 删除 `security/selinux/hooks.c` 中所有 `setprocattr` 重定向改动，恢复
+  Zygote 使用真实策略为应用设置上下文；
+- 保留 selinuxfs 的 policy/status/context/access 隐藏路径（这些路径有真实
+  策略的权限检查兜底，不会影响应用启动）；
+- 保留 `fake_state = selinux_state` 整体复制与 fail-closed 状态机。
 
-> [!IMPORTANT] 2026-08-05 真机事故与已修复根因
+设备已通过关闭功能恢复正常（`org.codeaurora.ims` 正常运行）。在重新构建、
+CI 审计并确认应用可正常启动之前，不得再次把该功能标记为可用。
+
+> [!IMPORTANT] 2026-08-05 真机事故与根因
 >
-> 在开发机上一次开启功能并冷启动后，出现“第二启动屏幕比平时更久，随后停在
-> 『手机正在启动』”的卡死，无法进入系统。已经确认两个直接相关因素：
+> 开启功能后冷启动两次都卡在“手机正在启动”，system_server 看门狗持续触发。
+> 崩溃日志显示 `org.codeaurora.ims`（uid 10149）在 Zygote
+> `selinux_android_setcontext()` 处反复 abort：
+> `frameworks/.../Zygote.cpp:2152: selinux_android_setcontext(...) failed`。
+> 原因确认：4.19 移植错误地钩住了 `selinux_setprocattr`，把应用 UID 写入
+> `/proc/self/attr/current` 重定向到假策略，而假策略/假 sidtab 无法完成 Zygote
+> 需要的上下文转换，导致每个由 Zygote 启动的应用（UID ≥ 10000）直接崩溃。
 >
-> 1. 旧版 4.19 适配在 `ksu_selinux_hide_enable()` 中只初始化了
->    `fake_state.initialized/ss/avc`，其余字段为零。在 `CONFIG_SECURITY_SELINUX_DEVELOP`
->    下零值 `enforcing=false` 会让隐藏查询路径对应用呈现出 permissive 语义，
->    与“不改变真实策略限制”的设计目标相悖，并显著放大策略转换/状态页路径的
->    异常面，是本次卡死最可疑的代码缺陷。
-> 2. 管理器点击“开启”是在 boot-complete 之后，此时内核已释放干净策略备份；
->    `EAGAIN` 会导致开关状态与内核实际运行状态不一致（已通过“queued for the
->    next boot”状态机修复）。
->
-> 修复内容（实验分支 `experiment/selinux-hide-sm8250-4.19`）：
->
-> - 4.19 启用时先 `fake_state = selinux_state` 整体复制实时控制平面，再仅替换
->   `ss`，并重新确认 `initialized`，保证 enforcing/checkreqprot/policycaps 等
->   字段与真实状态一致；
-> - 保持 fail-closed：备份缺失时 `running=false`，真实 SELinux 继续工作；
-> - CI 新增静态断言，要求 4.19 路径必须包含上述整体复制，防止回退。
->
-> 事故后已通过 Fastboot 将开发机恢复到已知良好 `main` 内核（`boot_b`
-> SHA-256 `a01d5add…fcac3`），当前设备正常、SELinux Enforcing、root 正常，
-> pstore 为空。重新开始真机验证前，必须先重新构建并通过完整 CI 审计。
+> 之前的 `fake_state` 字段补齐与“queued for the next boot”状态机是必要的
+> 加固，但不是卡死根因；卡死根因已通过删除 `setprocattr` 钩子修复。
+> 设备已在关闭功能后恢复（应用可正常启动）。
 
 ## 实现边界
 
 - 在 KSU 规则写入前序列化并重新解析原始 SELinux policydb，建立独立的只读
   `selinux_ss`、sidtab 和 class mapping；快照失败时保持功能关闭。
-- 对应用 UID（10000 及以上）的 SELinux status、policy、context/access 查询和
-  `attr/current` 校验使用快照；系统进程及关闭状态使用真实策略。
+- 对应用 UID（10000 及以上）的 SELinux status、policy、context/access 查询
+  使用快照；系统进程及关闭状态使用真实策略。`setprocattr`（应用上下文写入）
+  始终使用真实策略，否则 Zygote 无法为应用设置上下文。
 - 所有落点均为源码级条件分支，不使用 kprobe、KPM、运行时 text patch 或符号扫描。
 - 关闭开关只停止使用快照，不修改真实策略。可能已被 mmap 的 fake status 页不会在
   运行过程中释放。
