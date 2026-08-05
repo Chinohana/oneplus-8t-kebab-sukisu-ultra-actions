@@ -61,7 +61,7 @@ env:
 jobs:
   audit-build:
     name: selinux-hide / SM8250 4.19
-    if: github.ref == 'refs/heads/experiment/selinux-hide-sm8250-4.19'
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/experiment/selinux-hide-sm8250-4.19'
     runs-on: ubuntu-24.04
     timeout-minutes: 360
     env:
@@ -80,7 +80,13 @@ jobs:
         run: |
           set -euo pipefail
 
-          test "$GITHUB_REF" = "refs/heads/$CANONICAL_BRANCH"
+          case "$GITHUB_REF" in
+            "refs/heads/main" | "refs/heads/$CANONICAL_BRANCH") ;;
+            *)
+              echo "::error::This workflow must run on main or $CANONICAL_BRANCH"
+              exit 1
+              ;;
+          esac
           case "${{ inputs.profile || 'selinux-hide' }}" in
             selinux-hide) ;;
             *)
