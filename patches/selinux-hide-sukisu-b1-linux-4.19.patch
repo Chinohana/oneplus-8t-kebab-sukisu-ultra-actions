@@ -18,7 +18,7 @@ index 0cc760f..22a43d8 100644
      bool "Enable SukiSU KPM"
      depends on KSU && 64BIT
 diff --git a/kernel/feature/selinux_hide.c b/kernel/feature/selinux_hide.c
-index 31b2de8..88917c8 100644
+index 31b2de8..e51db8a 100644
 --- a/kernel/feature/selinux_hide.c
 +++ b/kernel/feature/selinux_hide.c
 @@ -12,6 +12,9 @@
@@ -258,20 +258,19 @@ index ba495d5..482279a 100644
  #endif
  
 diff --git a/kernel/runtime/ksud.c b/kernel/runtime/ksud.c
-index c9d11da..63b69ec 100644
+index ee0ee75..63b69ec 100644
 --- a/kernel/runtime/ksud.c
 +++ b/kernel/runtime/ksud.c
-@@ -61,7 +61,9 @@ void on_post_fs_data(void)
+@@ -61,7 +61,7 @@ void on_post_fs_data(void)
  #else
      stop_input_hook();
  #endif
+-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
 +#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0) || defined(CONFIG_KSU_SELINUX_HIDE_4_19)
      ksu_selinux_hide_handle_post_fs_data();
-+#endif
+ #endif
  }
- 
- extern void ext4_unregister_sysfs(struct super_block *sb);
-@@ -98,7 +100,7 @@ void on_boot_completed(void)
+@@ -100,7 +100,7 @@ void on_boot_completed(void)
      ksu_boot_completed = true;
      pr_info("on_boot_completed!\n");
      track_throne(true);
@@ -280,28 +279,26 @@ index c9d11da..63b69ec 100644
      ksu_selinux_hide_drop_backup_if_unused();
  #endif
  }
-@@ -223,7 +225,9 @@ int ksu_handle_execveat_ksud(int *fd, struct filename **filename_ptr,
+@@ -225,7 +225,7 @@ int ksu_handle_execveat_ksud(int *fd, struct filename **filename_ptr,
              char buf[16];
              if (check_argv(*argv, 1, "second_stage", buf, sizeof(buf))) {
                  pr_info("/system/bin/init second_stage executed\n");
+-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
 +#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0) || defined(CONFIG_KSU_SELINUX_HIDE_4_19)
                  ksu_selinux_hide_handle_second_stage();
-+#endif
+ #endif
                  apply_kernelsu_rules();
-                 cache_sid();
-                 setup_ksu_cred();
-@@ -295,7 +299,9 @@ int ksu_handle_execveat_ksud(int *fd, struct filename **filename_ptr, struct use
+@@ -299,7 +299,7 @@ int ksu_handle_execveat_ksud(int *fd, struct filename **filename_ptr, struct use
          char buf[16];
          if (!init_second_stage_executed && check_argv(*argv, 1, "second_stage", buf, sizeof(buf))) {
              pr_info("/system/bin/init second_stage executed\n");
+-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
 +#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0) || defined(CONFIG_KSU_SELINUX_HIDE_4_19)
              ksu_selinux_hide_handle_second_stage();
-+#endif
+ #endif
              apply_kernelsu_rules();
-             cache_sid();
-             setup_ksu_cred();
 diff --git a/kernel/selinux/rules.c b/kernel/selinux/rules.c
-index f8a33fa..ce05756 100644
+index 778cd58..ce05756 100644
 --- a/kernel/selinux/rules.c
 +++ b/kernel/selinux/rules.c
 @@ -1,6 +1,8 @@
@@ -362,16 +359,6 @@ index f8a33fa..ce05756 100644
      goto out_flush;
  
  do_stop_machine:
-@@ -254,6 +278,9 @@ do_stop_machine:
- out_flush:
-     smp_mb();
-     reset_avc_cache();
-+#ifdef CONFIG_KSU_SUSFS
-+    susfs_set_batch_sid();
-+#endif
- #endif
- }
- 
 diff --git a/kernel/selinux/sepolicy.c b/kernel/selinux/sepolicy.c
 index 2934778..6d332c4 100644
 --- a/kernel/selinux/sepolicy.c
@@ -490,7 +477,7 @@ index 2934778..6d332c4 100644
 +}
  #endif
 diff --git a/kernel/selinux/sepolicy.h b/kernel/selinux/sepolicy.h
-index 870fd67..bd14941 100644
+index 870fd67..0d88112 100644
 --- a/kernel/selinux/sepolicy.h
 +++ b/kernel/selinux/sepolicy.h
 @@ -7,6 +7,10 @@
