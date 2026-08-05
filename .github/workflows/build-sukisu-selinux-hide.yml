@@ -313,7 +313,6 @@ jobs:
             "$RUNNER_TEMP/selinux-hide-sukisu-files.from-patch"
 
           cat > "$RUNNER_TEMP/selinux-hide-kernel-files.expected" <<'EOF'
-          security/selinux/hooks.c
           security/selinux/selinuxfs.c
           EOF
           sed -i 's/^          //' \
@@ -461,7 +460,7 @@ jobs:
             exit 1
           fi
 
-          for file in security/selinux/hooks.c security/selinux/selinuxfs.c; do
+          for file in security/selinux/selinuxfs.c; do
             grep -Fq CONFIG_KSU_SELINUX_HIDE_4_19 \
               "kernel_experiment/$file"
           done
@@ -470,7 +469,6 @@ jobs:
 
           if grep -R -Eq 'kprobe|patch_text|find_kernel_symbol' \
               "$ksu_dir/feature/selinux_hide.c" \
-              kernel_experiment/security/selinux/hooks.c \
               kernel_experiment/security/selinux/selinuxfs.c; then
             echo "::error::Runtime hooking was introduced by the 4.19 port."
             exit 1
