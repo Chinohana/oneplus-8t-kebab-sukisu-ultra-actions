@@ -6,12 +6,28 @@
 
 ## 当前状态
 
-手机当前使用的 `main` 内核仍保持 SELinux Enforcing，SukiSU 管理器中的
-“隐藏 SELinux 修改”显示“内核不支持此特性”。这是因为固定的 SukiSU
-`b1d534bc` 只在 Linux 5.10 及以上注册该功能。
+本实验通过 `CONFIG_KSU_SELINUX_HIDE_4_19` 单独启用 SukiSU“隐藏 SELinux
+修改”的 Linux 4.19 回移植。该配置不会改变 SELinux 的实际 enforcing 状态，
+也不会修改 SUSFS 的 AVC 日志伪装。`main` 内核不包含该实验配置，管理器会
+显示“内核不支持此特性”，这是预期行为。
 
-本实验通过 `CONFIG_KSU_SELINUX_HIDE_4_19` 单独启用 4.19 回移植。该配置不会
-改变 SELinux 的实际 enforcing 状态，也不会修改 SUSFS 的 AVC 日志伪装。
+### 2026-08-05 真机验证结果（提交 `634c75a`）
+
+在开发机 `boot_b` 上完成以下验证：
+
+- 功能关闭状态下临时启动与刷入 `boot_b` 均正常：ADB、root、SELinux
+  Enforcing、存储解密、SUSFS 与关键服务全部正常。
+- 通过 `ksud feature set selinux_hide 1` + `save` 排队到下次启动，冷启动后
+  内核日志确认 `ksu_selinux_hide_running: 1`，系统正常进入桌面，未再出现
+  “手机正在启动”卡死。
+- 隐藏语义核验：应用 UID（≥10000）读取 `/sys/fs/selinux/policy` 与 `status`
+  得到与 root/系统不同的内容（无 KSU 规则的原版策略与独立 status 页）；对
+  `u:r:ksu:s0` 的 context/access 查询在应用 UID 下失败、在系统 UID 下成功，
+  与“系统进程始终使用实时策略”的设计一致。
+- 连续两次冷启动通过，pstore 为空，dmesg 无 panic/oops/BUG/UAF/lockup。
+
+> 说明：锁屏状态下 SukiSU 管理器无法在前台启动属正常现象，解锁后可正常
+> 打开并看到该开关处于启用状态。
 
 > [!IMPORTANT] 2026-08-05 真机事故与已修复根因
 >
