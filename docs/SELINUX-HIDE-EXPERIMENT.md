@@ -31,6 +31,24 @@ system_server 看门狗持续触发，系统无法完成启动。官方 SukiSU �
 设备已通过关闭功能恢复正常（`org.codeaurora.ims` 正常运行）。在重新构建、
 CI 审计并确认应用可正常启动之前，不得再次把该功能标记为可用。
 
+### 2026-08-06 真机复验通过（提交 `3ae092c`）
+
+修复 `setprocattr` 钩子后重新构建并通过完整 CI 审计，在开发机 `boot_b`
+上完成两轮冷启动复验：
+
+- 功能关闭/开启状态均正常进入系统，桌面（Lawnchair）可见，可列出 316 个
+  应用包；
+- 功能开启后 `org.codeaurora.ims`（uid 10149）等 Zygote 应用正常启动，
+  crash 日志中 `selinux_android_setcontext` 失败次数为 0，不再崩溃循环；
+- 内核日志确认 `ksu_selinux_hide_running: 1`；dmesg 仅有一次启动期
+  watchdog 心跳（正常），无持续看门狗触发；pstore 为空；
+- 隐藏语义仍生效：应用 UID 读取 policy/status 得到无 KSU 规则的干净策略与
+  独立状态页（哈希与 root/系统不同），系统进程与 root 使用实时策略；
+- SELinux 全程 Enforcing，root、SUSFS、vold/netd/surfaceflinger 正常。
+
+> 结论：`setprocattr` 钩子是“手机正在启动”卡死的真正原因，已移除并复验
+> 通过。实验分支产物仍标记为 EXPERIMENTAL，未合并 main。
+
 > [!IMPORTANT] 2026-08-05 真机事故与根因
 >
 > 开启功能后冷启动两次都卡在“手机正在启动”，system_server 看门狗持续触发。
