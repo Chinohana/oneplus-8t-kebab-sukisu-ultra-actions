@@ -8,8 +8,9 @@
 
 本实验通过 `CONFIG_KSU_SELINUX_HIDE_4_19` 单独启用 SukiSU“隐藏 SELinux
 修改”的 Linux 4.19 回移植。该配置不会改变 SELinux 的实际 enforcing 状态，
-也不会修改 SUSFS 的 AVC 日志伪装。`main` 内核不包含该实验配置，管理器会
-显示“内核不支持此特性”，这是预期行为。
+也不会修改 SUSFS 的 AVC 日志伪装。该功能已并入 `main`，但默认是可选开关：
+只有通过 **EXPERIMENTAL kebab SELinux hide (Linux 4.19)** 工作流构建并手动
+启用后才生效；`SUSFS` 分支与主工作流 `extended-full` 产物不包含该配置。
 
 ### 2026-08-05 真机状态（重要更正）
 

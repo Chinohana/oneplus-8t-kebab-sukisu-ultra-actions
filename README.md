@@ -65,21 +65,29 @@ SUSFS v2.2 废弃，因此没有重新加入。KPM 和 kprobes 也保持关闭�
 
 | 分支 | 用途 |
 | --- | --- |
-| [`main`](https://github.com/Chinohana/oneplus-8t-kebab-sukisu-ultra-actions/tree/main) | 当前 SUSFS v2.2 完整版，默认路线 |
+| [`main`](https://github.com/Chinohana/oneplus-8t-kebab-sukisu-ultra-actions/tree/main) | SUSFS v2.2 完整版 + 可选的“隐藏 SELinux 修改”功能 |
+| [`SUSFS`](https://github.com/Chinohana/oneplus-8t-kebab-sukisu-ultra-actions/tree/SUSFS) | 仅 SUSFS v2.2 完整版，不含 SELinux 隐藏（旧 main 快照） |
 | [`legacy`](https://github.com/Chinohana/oneplus-8t-kebab-sukisu-ultra-actions/tree/legacy) | 不含 SUSFS 的旧版 SukiSU 内核，固定在 `1bc3fb3` |
 | `experiment/susfs-v2.2-sm8250-4.19` | SUSFS 移植过程的历史开发分支 |
-| `experiment/selinux-hide-sm8250-4.19` | Linux 4.19“隐藏 SELinux 修改”实验；尚未真机验证 |
+| `experiment/selinux-hide-sm8250-4.19` | “隐藏 SELinux 修改”移植的历史实验分支 |
 
 只想使用原来的无 SUSFS 版本时，请切换到 `legacy`。
+只想使用无 SELinux 隐藏的 SUSFS 版本时，请切换到 `SUSFS`。
 
-## SELinux 隐藏实验
+## 隐藏 SELinux 修改（可选功能）
 
-当前实验分支为固定的 Linux 4.19 内核回移植 SukiSU“隐藏 SELinux 修改”功能。
-该功能默认只编译为可选开关，不会自动开启，也不会把 SELinux 切换为 Permissive。
+`main` 已包含 SukiSU“隐藏 SELinux 修改”的 Linux 4.19 回移植。该功能是可选
+开关：默认不会自动开启，也不会把 SELinux 切换为 Permissive。它让应用
+UID（≥10000）读取 `/sys/fs/selinux` 的 policy/status 时看到的是 KSU 规则注入
+前的干净策略，系统进程与 root 仍使用实时策略。
 
-这是高风险、尚未完成真机启动验证的实验产物。请勿直接刷写，也不要用于其他设备。
-实现边界、构建标识和后续安全测试步骤见
+该功能已在开发机（OnePlus 8T / LineageOS 23.2）上完成真机复验：三轮以上
+冷启动、应用正常启动、无崩溃循环、开关往返正常、pstore 为空。它仍属于
+实验性能力，不保证对所有检测方式生效；实现边界、构建标识和验证记录见
 [`docs/SELINUX-HIDE-EXPERIMENT.md`](docs/SELINUX-HIDE-EXPERIMENT.md)。
+
+构建时选择 **EXPERIMENTAL kebab SELinux hide (Linux 4.19)** 工作流即可生成
+包含该功能的镜像；`SUSFS` 分支或主工作流 `extended-full` 产物不包含该功能。
 
 ## 云端构建
 
