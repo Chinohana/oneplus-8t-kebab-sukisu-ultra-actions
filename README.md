@@ -16,7 +16,7 @@ LineageOS 23.2 Linux 4.19 内核上集成了 SukiSU Ultra 和 SUSFS v2.2。
 | --- | --- |
 | 设备 | OnePlus 8T（`kebab`，已测试型号 KB2000） |
 | 系统 | LineageOS 23.2 / Android 16 |
-| 内核 | Linux 4.19，提交 `4238ee49a84b` |
+| 内核 | Linux 4.19，LineageOS `lineage-24.0` 分支，提交 `4238ee49a84b` |
 | Root | SukiSU Ultra `builtin`，版本 40856 |
 | SUSFS | v2.2.0，NON-GKI，Inline Hook |
 | 编译器 | Android Clang `r563880` |
@@ -97,6 +97,14 @@ UID（≥10000）读取 `/sys/fs/selinux` 的 policy/status 时看到的是 KSU 
 4. 保持默认的 `extended-full`，或选择下方的分阶段配置。
 5. 构建成功后下载 kernel artifact，并核对其中的 SHA-256 和 provenance。
 
+默认使用固定的上游提交构建，保证同一仓库状态每次产生相同产物。若勾选
+**Track upstream latest**，工作流会在构建前解析 LineageOS `lineage-24.0`
+与 SukiSU `builtin` 分支的最新提交并立即使用它们。由于补丁是精确基线，
+一旦上游推进到补丁无法应用的提交，构建会在补丁检查阶段明确失败——这是
+预期的安全行为：此时需要重新生成或更新 `patches/` 下的补丁。解析到的
+实际提交会写入产物 provenance（`tracked_kernel_commit` /
+`tracked_sukisu_commit`）。
+
 工作流提供四种配置：
 
 | 配置 | 内容 | 状态 |
@@ -109,6 +117,17 @@ UID（≥10000）读取 `/sys/fs/selinux` 的 policy/status 时看到的是 KSU 
 每次构建都会重新检查固定源码版本、补丁落点、最终内核配置、符号、编译警告和
 Image 大小。内核、SukiSU、SUSFS、Clang 和 AnyKernel3 都使用固定提交，避免
 上游更新悄悄改变结果。
+
+## 上游版本现状
+
+- **内核**：LineageOS 已为 kebab 建立 `lineage-24.0` 分支，本仓库默认跟随
+  该分支。当前 `lineage-24.0` 与 `lineage-23.2` 指向同一提交
+  `4238ee49a84b`，因此产物同时适用于 LineageOS 23.2 与 24.0 的内核线。
+- **SukiSU**：`builtin` 分支是支持传统 Manual Hook（非 GKI 内联调用、
+  无需 KPROBES）的分支，本仓库固定其最新提交 `b1d534bc`。SukiSU 的
+  `main` 分支（v4.x）是新一代架构，`CONFIG_KSU` 硬依赖 `CONFIG_KPROBES`
+  且使用运行时 syscall 打补丁与 LSM Hook，与本项目"KPM/kprobes 关闭、
+  禁止运行时打补丁"的约束冲突，因此不用于本仓库。
 
 ## 安装前必须知道
 
