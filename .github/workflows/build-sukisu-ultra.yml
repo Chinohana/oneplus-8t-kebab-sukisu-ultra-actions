@@ -1568,18 +1568,20 @@ jobs:
             AnyKernel3/Image
 
           feature_tags=""
+          string_feature=""
           if test "$ENABLE_SUSFS" = "true"; then
-            feature_tags="SUSFS-v2.2-${PROFILE}"
+            feature_tags="${PROFILE}"
+            string_feature="SUSFS v2.2 ${PROFILE}"
           else
-            feature_tags="NO-SUSFS"
+            feature_tags="nosusfs"
+            string_feature="no SUSFS"
           fi
           if test "$ENABLE_SELINUX_HIDE" = "true"; then
-            feature_tags="${feature_tags}-SELINUX-HIDE"
-          else
-            feature_tags="${feature_tags}-NO-SELINUX-HIDE"
+            feature_tags="${feature_tags}-hide"
+            string_feature="${string_feature} SELinux hide"
           fi
           sed -i \
-            "s/^kernel.string=.*/kernel.string=TESTING SukiSU Ultra kebab ${feature_tags} KSU${SUKISU_DRIVER_VERSION}/" \
+            "s/^kernel.string=.*/kernel.string=TESTING SukiSU Ultra kebab ${string_feature} KSU${SUKISU_DRIVER_VERSION}/" \
             AnyKernel3/anykernel.sh
           sed -i 's/^do.devicecheck=.*/do.devicecheck=1/' \
             AnyKernel3/anykernel.sh
@@ -1606,7 +1608,7 @@ jobs:
           sed -i 's/^write_boot;.*/flash_boot;/' AnyKernel3/anykernel.sh
 
           grep -Fqx \
-            "kernel.string=TESTING SukiSU Ultra kebab ${feature_tags} KSU${SUKISU_DRIVER_VERSION}" \
+            "kernel.string=TESTING SukiSU Ultra kebab ${string_feature} KSU${SUKISU_DRIVER_VERSION}" \
             AnyKernel3/anykernel.sh
           grep -q '^device.name1=OnePlus8T$' AnyKernel3/anykernel.sh
           grep -q '^device.name2=KB2000$' AnyKernel3/anykernel.sh
@@ -1632,9 +1634,7 @@ jobs:
           fi
 
           rm -f AnyKernel3/README.md
-          prefix="TESTING_SukiSU-Ultra_kebab_${feature_tags}"
-          pins="K-${KERNEL_COMMIT:0:12}_SU-${SUKISU_COMMIT:0:12}_SF-${SUSFS_COMMIT:0:12}_REF-${SM8250_REFERENCE_COMMIT:0:12}_AK-${ANYKERNEL_COMMIT:0:12}_TC-${CLANG_ARCHIVE_COMMIT:0:12}_WF-${GITHUB_SHA:0:12}"
-          package_name="${prefix}_${pins}_KSU${SUKISU_DRIVER_VERSION}"
+          package_name="SukiSU_kebab_${feature_tags}_K${KERNEL_COMMIT:0:7}_SU${SUKISU_COMMIT:0:7}_KSU${SUKISU_DRIVER_VERSION}"
           (
             cd AnyKernel3
             zip -r9 "../${package_name}.zip" . \
@@ -1652,18 +1652,20 @@ jobs:
           set -euo pipefail
 
           feature_tags=""
+          string_feature=""
           if test "$ENABLE_SUSFS" = "true"; then
-            feature_tags="SUSFS-v2.2-${PROFILE}"
+            feature_tags="${PROFILE}"
+            string_feature="SUSFS v2.2 ${PROFILE}"
           else
-            feature_tags="NO-SUSFS"
+            feature_tags="nosusfs"
+            string_feature="no SUSFS"
           fi
           if test "$ENABLE_SELINUX_HIDE" = "true"; then
-            feature_tags="${feature_tags}-SELINUX-HIDE"
-          else
-            feature_tags="${feature_tags}-NO-SELINUX-HIDE"
+            feature_tags="${feature_tags}-hide"
+            string_feature="${string_feature} SELinux hide"
           fi
 
-          package_name="RAW_${feature_tags}_K-${KERNEL_COMMIT:0:12}_SU-${SUKISU_COMMIT:0:12}_TC-${CLANG_ARCHIVE_COMMIT:0:12}_WF-${GITHUB_SHA:0:12}"
+          package_name="RAW_SukiSU_kebab_${feature_tags}_K${KERNEL_COMMIT:0:7}_SU${SUKISU_COMMIT:0:7}_KSU${SUKISU_DRIVER_VERSION}"
           echo "PACKAGE_NAME=$package_name" >> "$GITHUB_ENV"
           echo "KERNEL_ARTIFACT_NAME=$package_name" >> "$GITHUB_ENV"
 
