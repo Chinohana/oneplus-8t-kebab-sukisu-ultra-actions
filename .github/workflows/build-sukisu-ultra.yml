@@ -36,6 +36,11 @@ on:
         required: false
         type: boolean
         default: false
+      use_ccache:
+        description: "Cache compiler output with ccache (off: previous non-cached build path)"
+        required: false
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -85,6 +90,7 @@ env:
   SUSFS_PROFILE: ${{ inputs.susfs_profile || 'extended-full' }}
   ENABLE_SELINUX_HIDE: ${{ inputs.enable_selinux_hide || true }}
   USE_ANYKERNEL: ${{ inputs.use_anykernel || true }}
+  USE_CCACHE: ${{ inputs.use_ccache || true }}
 
 jobs:
   audit-build:
@@ -210,7 +216,7 @@ jobs:
           set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y \
-            bc bison build-essential cpio curl file flex git jq libelf-dev \
+            bc bison build-essential ccache cpio curl file flex git jq libelf-dev \
             libssl-dev lz4 ninja-build python3 rsync unzip wget zip
 
       - name: Cache Android Clang r563880
@@ -440,9 +446,35 @@ jobs:
             "$RUNNER_TEMP/sukisu-compat-files.actual"
           cd "$GITHUB_WORKSPACE"
 
-          cp -a kernel_common kernel_baseline
-          cp -a kernel_common kernel_experiment
-          rm -rf kernel_common
+          # kernel_baseline is a fresh checkout of KERNEL_COMMIT; replay the
+          # same SukiSU builtin preparation below so both trees stay
+          # identical except for the SUSFS/SELinux hide patches.
+          git -C kernel_common worktree add ../kernel_baseline "$KERNEL_COMMIT"
+          mv kernel_common kernel_experiment
+          git -C kernel_experiment worktree repair ../kernel_baseline
+
+          sed -i 's/ -dirty//g' kernel_baseline/scripts/setlocalversion
+          sed -i '$i res=$(echo "$res" | sed '\''s/-dirty//g'\'')' \
+            kernel_baseline/scripts/setlocalversion
+          cd kernel_baseline
+          curl --fail --location --show-error --silent \
+            "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/${SUKISU_COMMIT}/kernel/setup.sh" \
+            | bash -s "$SUKISU_COMMIT"
+          test -d KernelSU
+          test "$(git -C KernelSU rev-parse HEAD)" = "$SUKISU_COMMIT"
+          test "$(git -C KernelSU rev-parse "origin/$SUKISU_BRANCH")" = "$SUKISU_COMMIT"
+          test "$(git -C KernelSU remote get-url origin)" = "$SUKISU_REPOSITORY"
+          git -C KernelSU apply --check --whitespace=error-all \
+            "$GITHUB_WORKSPACE/$SUKISU_COMPAT_PATCH"
+          git -C KernelSU apply --whitespace=error-all \
+            "$GITHUB_WORKSPACE/$SUKISU_COMPAT_PATCH"
+          git -C KernelSU diff --check
+          git -C KernelSU diff --name-only |
+            LC_ALL=C sort -u \
+            > "$RUNNER_TEMP/sukisu-compat-files.baseline.actual"
+          diff -u "$RUNNER_TEMP/sukisu-compat-files.expected" \
+            "$RUNNER_TEMP/sukisu-compat-files.baseline.actual"
+          cd "$GITHUB_WORKSPACE"
 
           if test "$ENABLE_SELINUX_HIDE" = "true"; then
             git -C kernel_experiment/KernelSU apply --check \
@@ -976,6 +1008,16 @@ jobs:
               > audit/config-baseline-to-selected.diff
           fi
 
+      - name: Restore ccache
+        id: cache-ccache
+        if: ${{ env.USE_CCACHE == 'true' }}
+        uses: actions/cache/restore@v4
+        with:
+          path: .ccache
+          key: ccache-kebab-${{ hashFiles('patches/*', '.github/workflows/build-sukisu-ultra.yml') }}-${{ env.KERNEL_COMMIT }}-${{ env.SUKISU_COMMIT }}-${{ env.SUKISU_DRIVER_VERSION }}
+          restore-keys: |
+            ccache-kebab-
+
       - name: Build baseline, smoke, and selected profile
         shell: bash
         run: |
@@ -983,6 +1025,12 @@ jobs:
           export PATH="$GITHUB_WORKSPACE/toolchains/clang/bin:$PATH"
           export KBUILD_BUILD_USER=github-actions
           export KBUILD_BUILD_HOST=github
+          if test "$USE_CCACHE" = "true"; then
+            export CCACHE_DIR="$GITHUB_WORKSPACE/.ccache"
+            export CCACHE_MAXSIZE=3G
+            export CCACHE_COMPRESS=1
+            export CCACHE_SLOPPINESS=time_macros
+          fi
 
           build_kernel() {
             local tree="$1"
@@ -991,11 +1039,20 @@ jobs:
 
             cd "$GITHUB_WORKSPACE/$tree"
             set +e
-            make -j"$(nproc --all)" O="$out" ARCH=arm64 \
-              LLVM=1 LLVM_IAS=1 \
-              KSU_VERSION="$SUKISU_DRIVER_VERSION" \
-              KCFLAGS="-Wno-error" Image 2>&1 |
-              tee "$GITHUB_WORKSPACE/$log"
+            if test "$USE_CCACHE" = "true"; then
+              make -j"$(nproc --all)" O="$out" ARCH=arm64 \
+                LLVM=1 LLVM_IAS=1 \
+                CC="ccache clang" \
+                KSU_VERSION="$SUKISU_DRIVER_VERSION" \
+                KCFLAGS="-Wno-error" Image 2>&1 |
+                tee "$GITHUB_WORKSPACE/$log"
+            else
+              make -j"$(nproc --all)" O="$out" ARCH=arm64 \
+                LLVM=1 LLVM_IAS=1 \
+                KSU_VERSION="$SUKISU_DRIVER_VERSION" \
+                KCFLAGS="-Wno-error" Image 2>&1 |
+                tee "$GITHUB_WORKSPACE/$log"
+            fi
             local build_status="${PIPESTATUS[0]}"
             set -e
             test "$build_status" -eq 0
@@ -1028,6 +1085,22 @@ jobs:
             build_kernel kernel_experiment out-selected \
               audit/build-selected.log
           fi
+
+      - name: Record ccache statistics
+        if: ${{ env.USE_CCACHE == 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          export CCACHE_DIR="$GITHUB_WORKSPACE/.ccache"
+          mkdir -p audit
+          ccache -s | tee audit/ccache-stats.txt
+
+      - name: Save ccache
+        if: ${{ env.USE_CCACHE == 'true' && steps.cache-ccache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v4
+        with:
+          path: .ccache
+          key: ccache-kebab-${{ hashFiles('patches/*', '.github/workflows/build-sukisu-ultra.yml') }}-${{ env.KERNEL_COMMIT }}-${{ env.SUKISU_COMMIT }}-${{ env.SUKISU_DRIVER_VERSION }}
 
       - name: Audit warnings, symbols, configuration, and Image growth
         shell: bash
