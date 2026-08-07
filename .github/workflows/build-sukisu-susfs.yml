@@ -16,6 +16,11 @@ on:
           - minimal-mount
           - extended-stat
           - extended-full
+      track_upstream:
+        description: Resolve the latest lineage-24.0 kernel and SukiSU builtin commits before building (fails early if the pinned patches no longer apply)
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -30,7 +35,7 @@ env:
   CANONICAL_BRANCH: main
 
   KERNEL_REPOSITORY: https://github.com/LineageOS/android_kernel_oneplus_sm8250.git
-  KERNEL_BRANCH: lineage-23.2
+  KERNEL_BRANCH: lineage-24.0
   KERNEL_COMMIT: 4238ee49a84bd418c8515c297563bb29f95ab40b
   KERNEL_DEFCONFIG: vendor/kona-perf_defconfig
   OPLUS_CONFIG: vendor/oplus.config
@@ -58,6 +63,7 @@ env:
   MAX_IMAGE_GROWTH_BYTES: "8388608"
   MAX_IMAGE_GROWTH_PERCENT: "12"
   MINIMAL_MOUNT_RUNTIME_APPROVED_COMMIT: 73c1484584a40dd41a9ccc2d0593d47de5b66dc6
+  TRACK_UPSTREAM: ${{ inputs.track_upstream || false }}
 
 jobs:
   audit-build:
@@ -79,6 +85,25 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
+          if test "$TRACK_UPSTREAM" = "true"; then
+            tracked_kernel_commit="$(
+              git ls-remote "$KERNEL_REPOSITORY" \
+                "refs/heads/$KERNEL_BRANCH" | awk '{print $1}'
+            )"
+            tracked_sukisu_commit="$(
+              git ls-remote "$SUKISU_REPOSITORY" \
+                "refs/heads/$SUKISU_BRANCH" | awk '{print $1}'
+            )"
+            test -n "$tracked_kernel_commit"
+            test -n "$tracked_sukisu_commit"
+            echo "KERNEL_COMMIT=$tracked_kernel_commit" >> "$GITHUB_ENV"
+            echo "SUKISU_COMMIT=$tracked_sukisu_commit" >> "$GITHUB_ENV"
+            echo "TRACKED_KERNEL_COMMIT=$tracked_kernel_commit" \
+              >> "$GITHUB_ENV"
+            echo "TRACKED_SUKISU_COMMIT=$tracked_sukisu_commit" \
+              >> "$GITHUB_ENV"
+          fi
 
           test "$GITHUB_REF" = "refs/heads/$CANONICAL_BRANCH"
           case "$PROFILE" in
@@ -214,9 +239,12 @@ jobs:
           test "$(
             git -C sm8250_reference rev-parse HEAD
           )" = "$SM8250_REFERENCE_COMMIT"
-          test "$(
-            git -C sm8250_reference rev-parse "${SM8250_REFERENCE_COMMIT}^"
-          )" = "$KERNEL_COMMIT"
+          if test "$TRACK_UPSTREAM" != "true"; then
+            test "$(
+              git -C sm8250_reference rev-parse \
+                "${SM8250_REFERENCE_COMMIT}^"
+            )" = "$KERNEL_COMMIT"
+          fi
 
       - name: Preflight exact patch file allowlists
         shell: bash
@@ -1316,6 +1344,9 @@ jobs:
             echo "model=OnePlus 8T"
             echo "rom=LineageOS 23.2"
             echo "profile=$PROFILE"
+            echo "track_upstream=$TRACK_UPSTREAM"
+            echo "tracked_kernel_commit=${TRACKED_KERNEL_COMMIT:-}"
+            echo "tracked_sukisu_commit=${TRACKED_SUKISU_COMMIT:-}"
             echo "builder_commit=$GITHUB_SHA"
             echo "builder_base_commit=$BUILDER_BASE_COMMIT"
             echo "github_run_id=$GITHUB_RUN_ID"
