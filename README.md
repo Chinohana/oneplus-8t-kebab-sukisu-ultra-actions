@@ -100,6 +100,10 @@ UID（≥10000）读取 `/sys/fs/selinux` 的 policy/status 时看到的是 KSU 
    - **Use AnyKernel3**：打包为 AnyKernel3 ZIP；关闭时产物为 raw
      `Image` / `System.map` / 配置与 provenance。
    - **Track upstream latest**：构建前解析上游最新提交（见下）。
+   - **Use ccache**：用 ccache 缓存编译输出（默认开启）。同 pin 的重复
+     构建会直接命中缓存，把单次构建从约 75 分钟降到约 15–20 分钟；新
+     pin 首次构建约 45 分钟。产物与审计结果不受影响（ccache 对相同输入
+     重放完全相同的编译输出）。关闭后回到不带缓存的旧构建路径。
 5. 构建成功后下载 kernel artifact，并核对其中的 SHA-256 和 provenance。
 
 默认使用固定的上游提交构建，保证同一仓库状态每次产生相同产物。若勾选
