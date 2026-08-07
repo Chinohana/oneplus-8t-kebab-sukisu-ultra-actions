@@ -1,18 +1,36 @@
-name: EXPERIMENTAL kebab SELinux hide (Linux 4.19)
+name: Build kebab SukiSU Ultra
 
 on:
   push:
     branches:
-      - experiment/selinux-hide-sm8250-4.19
+      - main
   workflow_dispatch:
     inputs:
-      profile:
-        description: Audited SUSFS feature profile
+      enable_susfs:
+        description: Include SUSFS v2.2 kernel support
+        required: true
+        type: boolean
+        default: true
+      susfs_profile:
+        description: Audited SUSFS feature profile (used when SUSFS is enabled)
         required: true
         type: choice
-        default: selinux-hide
+        default: extended-full
         options:
-          - selinux-hide
+          - smoke
+          - minimal-mount
+          - extended-stat
+          - extended-full
+      enable_selinux_hide:
+        description: Include SELinux modification hiding (Linux 4.19 backport)
+        required: true
+        type: boolean
+        default: true
+      use_anykernel:
+        description: "Package with AnyKernel3 ZIP (off: raw Image/System.map/config artifact)"
+        required: true
+        type: boolean
+        default: true
       track_upstream:
         description: Resolve the latest lineage-24.0 kernel and SukiSU builtin commits before building (fails early if the pinned patches no longer apply)
         required: false
@@ -23,13 +41,13 @@ permissions:
   contents: read
 
 concurrency:
-  group: kebab-selinux-hide-4.19-${{ github.ref }}
+  group: kebab-ultra-${{ github.ref }}-${{ inputs.enable_susfs || true }}-${{ inputs.susfs_profile || 'extended-full' }}-${{ inputs.enable_selinux_hide || true }}-${{ inputs.use_anykernel || true }}
   cancel-in-progress: false
 
 env:
   BUILDER_BASE_COMMIT: 1bc3fb3e03f313b905851b32e6fff2d14f49e0b7
   ORIGINAL_WORKFLOW_SHA256: cd654904e8bf96032c1990ada83125894ece23daf41cdba7da514fd17d6afe31
-  CANONICAL_BRANCH: experiment/selinux-hide-sm8250-4.19
+  CANONICAL_BRANCH: main
 
   KERNEL_REPOSITORY: https://github.com/LineageOS/android_kernel_oneplus_sm8250.git
   KERNEL_BRANCH: lineage-24.0
@@ -56,23 +74,26 @@ env:
 
   SUSFS_PATCH: patches/manual-hooks-susfs-v2.2-sm8250-4.19.patch
   SUKISU_COMPAT_PATCH: patches/sukisu-builtin-b1-linux-4.19.patch
+  BASELINE_HOOK_PATCH: patches/sukisu-builtin-manual-hooks-sm8250-4.19.patch
   SELINUX_HIDE_SUKISU_PATCH: patches/selinux-hide-sukisu-b1-linux-4.19.patch
   SELINUX_HIDE_KERNEL_PATCH: patches/selinux-hide-kernel-4.19.patch
-  BASELINE_HOOK_PATCH: patches/sukisu-builtin-manual-hooks-sm8250-4.19.patch
   MAX_IMAGE_GROWTH_BYTES: "8388608"
   MAX_IMAGE_GROWTH_PERCENT: "12"
   MINIMAL_MOUNT_RUNTIME_APPROVED_COMMIT: 73c1484584a40dd41a9ccc2d0593d47de5b66dc6
   TRACK_UPSTREAM: ${{ inputs.track_upstream || false }}
+  ENABLE_SUSFS: ${{ inputs.enable_susfs || true }}
+  SUSFS_PROFILE: ${{ inputs.susfs_profile || 'extended-full' }}
+  ENABLE_SELINUX_HIDE: ${{ inputs.enable_selinux_hide || true }}
+  USE_ANYKERNEL: ${{ inputs.use_anykernel || true }}
 
 jobs:
   audit-build:
-    name: selinux-hide / SM8250 4.19
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/experiment/selinux-hide-sm8250-4.19'
+    name: kebab SM8250 4.19
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 360
     env:
-      PROFILE: extended-full
-      DISPLAY_PROFILE: selinux-hide
+      PROFILE: ${{ inputs.susfs_profile || 'extended-full' }}
       SUSFS_SMOKE_APPROVED_COMMIT: ${{ vars.SUSFS_SMOKE_APPROVED_COMMIT }}
 
     steps:
@@ -105,20 +126,16 @@ jobs:
               >> "$GITHUB_ENV"
           fi
 
-          case "$GITHUB_REF" in
-            "refs/heads/main" | "refs/heads/$CANONICAL_BRANCH") ;;
-            *)
-              echo "::error::This workflow must run on main or $CANONICAL_BRANCH"
-              exit 1
-              ;;
-          esac
-          case "${{ inputs.profile || 'selinux-hide' }}" in
-            selinux-hide) ;;
-            *)
-              echo "::error::Unknown SUSFS profile: $PROFILE"
-              exit 1
-              ;;
-          esac
+          test "$GITHUB_REF" = "refs/heads/$CANONICAL_BRANCH"
+          if test "$ENABLE_SUSFS" = "true"; then
+            case "$PROFILE" in
+              smoke|minimal-mount|extended-stat|extended-full) ;;
+              *)
+                echo "::error::Unknown SUSFS profile: $PROFILE"
+                exit 1
+                ;;
+            esac
+          fi
 
           git fetch --no-tags --depth=1 origin "$BUILDER_BASE_COMMIT"
           git show \
@@ -128,39 +145,45 @@ jobs:
             sha256sum "$RUNNER_TEMP/original-build-sukisu.yml" | awk '{print $1}'
           )" = "$ORIGINAL_WORKFLOW_SHA256"
 
-          test -s "$SUSFS_PATCH"
+          if test "$ENABLE_SUSFS" = "true"; then
+            test -s "$SUSFS_PATCH"
+          fi
           test -s "$SUKISU_COMPAT_PATCH"
-          test -s "$SELINUX_HIDE_SUKISU_PATCH"
-          test -s "$SELINUX_HIDE_KERNEL_PATCH"
           test -s "$BASELINE_HOOK_PATCH"
-
-          if test "$PROFILE" = minimal-mount; then
-            if test -z "$SUSFS_SMOKE_APPROVED_COMMIT" ||
-               test "$SUSFS_SMOKE_APPROVED_COMMIT" != "$GITHUB_SHA"; then
-              echo "::error::minimal-mount is blocked until the smoke runtime gate approves this exact commit."
-              echo "::error::Set repository variable SUSFS_SMOKE_APPROVED_COMMIT=$GITHUB_SHA only after controlled smoke validation."
-              exit 1
-            fi
+          if test "$ENABLE_SELINUX_HIDE" = "true"; then
+            test -s "$SELINUX_HIDE_SUKISU_PATCH"
+            test -s "$SELINUX_HIDE_KERNEL_PATCH"
           fi
 
-          if test "$PROFILE" = extended-stat ||
-             test "$PROFILE" = extended-full; then
-            git fetch --no-tags --depth=1 origin \
-              "$MINIMAL_MOUNT_RUNTIME_APPROVED_COMMIT"
-            for file in \
-              "$SUSFS_PATCH" \
-              "$SUKISU_COMPAT_PATCH" \
-              "$BASELINE_HOOK_PATCH"; do
-              approved_blob="$(
-                git rev-parse \
-                  "${MINIMAL_MOUNT_RUNTIME_APPROVED_COMMIT}:${file}"
-              )"
-              current_blob="$(git hash-object "$file")"
-              if test "$approved_blob" != "$current_blob"; then
-                echo "::error file=$file::Runtime-approved patch changed after minimal-mount validation."
+          if test "$ENABLE_SUSFS" = "true"; then
+            if test "$PROFILE" = minimal-mount; then
+              if test -z "$SUSFS_SMOKE_APPROVED_COMMIT" ||
+                 test "$SUSFS_SMOKE_APPROVED_COMMIT" != "$GITHUB_SHA"; then
+                echo "::error::minimal-mount is blocked until the smoke runtime gate approves this exact commit."
+                echo "::error::Set repository variable SUSFS_SMOKE_APPROVED_COMMIT=$GITHUB_SHA only after controlled smoke validation."
                 exit 1
               fi
-            done
+            fi
+
+            if test "$PROFILE" = extended-stat ||
+               test "$PROFILE" = extended-full; then
+              git fetch --no-tags --depth=1 origin \
+                "$MINIMAL_MOUNT_RUNTIME_APPROVED_COMMIT"
+              for file in \
+                "$SUSFS_PATCH" \
+                "$SUKISU_COMPAT_PATCH" \
+                "$BASELINE_HOOK_PATCH"; do
+                approved_blob="$(
+                  git rev-parse \
+                    "${MINIMAL_MOUNT_RUNTIME_APPROVED_COMMIT}:${file}"
+                )"
+                current_blob="$(git hash-object "$file")"
+                if test "$approved_blob" != "$current_blob"; then
+                  echo "::error file=$file::Runtime-approved patch changed after minimal-mount validation."
+                  exit 1
+                fi
+              done
+            fi
           fi
 
       - name: Check runner storage
@@ -224,6 +247,7 @@ jobs:
           key: android-clang-r563880-linux-x86
 
       - name: Fetch exact SUSFS and SM8250 references
+        if: ${{ env.ENABLE_SUSFS == 'true' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -260,7 +284,8 @@ jobs:
           set -euo pipefail
           mkdir -p audit
 
-          cat > "$RUNNER_TEMP/susfs-kernel-files.expected" <<'EOF'
+          if test "$ENABLE_SUSFS" = "true"; then
+            cat > "$RUNNER_TEMP/susfs-kernel-files.expected" <<'EOF'
           fs/Makefile
           fs/exec.c
           fs/namespace.c
@@ -278,22 +303,23 @@ jobs:
           kernel/sys.c
           security/selinux/avc.c
           EOF
-          sed -i 's/^          //' \
-            "$RUNNER_TEMP/susfs-kernel-files.expected"
-          LC_ALL=C sort -o "$RUNNER_TEMP/susfs-kernel-files.expected" \
-            "$RUNNER_TEMP/susfs-kernel-files.expected"
+            sed -i 's/^          //' \
+              "$RUNNER_TEMP/susfs-kernel-files.expected"
+            LC_ALL=C sort -o "$RUNNER_TEMP/susfs-kernel-files.expected" \
+              "$RUNNER_TEMP/susfs-kernel-files.expected"
 
-          git apply --numstat "$SUSFS_PATCH" |
-            awk -F '\t' '{print $3}' |
-            LC_ALL=C sort -u \
-            > "$RUNNER_TEMP/susfs-kernel-files.from-patch"
-          diff -u "$RUNNER_TEMP/susfs-kernel-files.expected" \
-            "$RUNNER_TEMP/susfs-kernel-files.from-patch"
+            git apply --numstat "$SUSFS_PATCH" |
+              awk -F '\t' '{print $3}' |
+              LC_ALL=C sort -u \
+              > "$RUNNER_TEMP/susfs-kernel-files.from-patch"
+            diff -u "$RUNNER_TEMP/susfs-kernel-files.expected" \
+              "$RUNNER_TEMP/susfs-kernel-files.from-patch"
 
-          if grep -Eq '(^/|(^|/)\.\.(/|$)|\\)' \
-            "$RUNNER_TEMP/susfs-kernel-files.from-patch"; then
-            echo "::error::Unsafe path found in the experimental patch."
-            exit 1
+            if grep -Eq '(^/|(^|/)\.\.(/|$)|\\)' \
+              "$RUNNER_TEMP/susfs-kernel-files.from-patch"; then
+              echo "::error::Unsafe path found in the experimental patch."
+              exit 1
+            fi
           fi
 
           cat > "$RUNNER_TEMP/baseline-hook-files.expected" <<'EOF'
@@ -327,7 +353,8 @@ jobs:
           diff -u "$RUNNER_TEMP/sukisu-compat-files.expected" \
             "$RUNNER_TEMP/sukisu-compat-files.from-patch"
 
-          cat > "$RUNNER_TEMP/selinux-hide-sukisu-files.expected" <<'EOF'
+          if test "$ENABLE_SELINUX_HIDE" = "true"; then
+            cat > "$RUNNER_TEMP/selinux-hide-sukisu-files.expected" <<'EOF'
           kernel/Kconfig
           kernel/feature/selinux_hide.c
           kernel/feature/selinux_hide.h
@@ -338,30 +365,38 @@ jobs:
           kernel/selinux/sepolicy.c
           kernel/selinux/sepolicy.h
           EOF
-          sed -i 's/^          //' \
-            "$RUNNER_TEMP/selinux-hide-sukisu-files.expected"
-          git apply --numstat "$SELINUX_HIDE_SUKISU_PATCH" |
-            awk -F '\t' '{print $3}' | LC_ALL=C sort -u \
-            > "$RUNNER_TEMP/selinux-hide-sukisu-files.from-patch"
-          diff -u "$RUNNER_TEMP/selinux-hide-sukisu-files.expected" \
-            "$RUNNER_TEMP/selinux-hide-sukisu-files.from-patch"
+            sed -i 's/^          //' \
+              "$RUNNER_TEMP/selinux-hide-sukisu-files.expected"
+            git apply --numstat "$SELINUX_HIDE_SUKISU_PATCH" |
+              awk -F '\t' '{print $3}' | LC_ALL=C sort -u \
+              > "$RUNNER_TEMP/selinux-hide-sukisu-files.from-patch"
+            diff -u "$RUNNER_TEMP/selinux-hide-sukisu-files.expected" \
+              "$RUNNER_TEMP/selinux-hide-sukisu-files.from-patch"
 
-          cat > "$RUNNER_TEMP/selinux-hide-kernel-files.expected" <<'EOF'
+            cat > "$RUNNER_TEMP/selinux-hide-kernel-files.expected" <<'EOF'
           security/selinux/selinuxfs.c
           EOF
-          sed -i 's/^          //' \
-            "$RUNNER_TEMP/selinux-hide-kernel-files.expected"
-          git apply --numstat "$SELINUX_HIDE_KERNEL_PATCH" |
-            awk -F '\t' '{print $3}' | LC_ALL=C sort -u \
-            > "$RUNNER_TEMP/selinux-hide-kernel-files.from-patch"
-          diff -u "$RUNNER_TEMP/selinux-hide-kernel-files.expected" \
-            "$RUNNER_TEMP/selinux-hide-kernel-files.from-patch"
+            sed -i 's/^          //' \
+              "$RUNNER_TEMP/selinux-hide-kernel-files.expected"
+            git apply --numstat "$SELINUX_HIDE_KERNEL_PATCH" |
+              awk -F '\t' '{print $3}' | LC_ALL=C sort -u \
+              > "$RUNNER_TEMP/selinux-hide-kernel-files.from-patch"
+            diff -u "$RUNNER_TEMP/selinux-hide-kernel-files.expected" \
+              "$RUNNER_TEMP/selinux-hide-kernel-files.from-patch"
+          fi
 
           cp "$RUNNER_TEMP/"*.expected audit/
           cp "$RUNNER_TEMP/"*.from-patch audit/
-          sha256sum "$SUSFS_PATCH" "$SUKISU_COMPAT_PATCH" \
-            "$BASELINE_HOOK_PATCH" "$SELINUX_HIDE_SUKISU_PATCH" \
-            "$SELINUX_HIDE_KERNEL_PATCH" |
+          if test "$ENABLE_SUSFS" = "true"; then
+            patch_hash_list="$SUSFS_PATCH "
+          else
+            patch_hash_list=""
+          fi
+          if test "$ENABLE_SELINUX_HIDE" = "true"; then
+            patch_hash_list="${patch_hash_list}$SELINUX_HIDE_SUKISU_PATCH $SELINUX_HIDE_KERNEL_PATCH "
+          fi
+          sha256sum $patch_hash_list "$SUKISU_COMPAT_PATCH" \
+            "$BASELINE_HOOK_PATCH" |
             tee audit/patches.sha256
 
       - name: Prepare exact common kernel and SukiSU source
@@ -409,12 +444,15 @@ jobs:
           cp -a kernel_common kernel_experiment
           rm -rf kernel_common
 
-          git -C kernel_experiment/KernelSU apply --check \
-            --whitespace=error-all \
-            "$GITHUB_WORKSPACE/$SELINUX_HIDE_SUKISU_PATCH"
-          git -C kernel_experiment/KernelSU apply --whitespace=error-all \
-            "$GITHUB_WORKSPACE/$SELINUX_HIDE_SUKISU_PATCH"
-          git -C kernel_experiment/KernelSU diff --check
+          if test "$ENABLE_SELINUX_HIDE" = "true"; then
+            git -C kernel_experiment/KernelSU apply --check \
+              --whitespace=error-all \
+              "$GITHUB_WORKSPACE/$SELINUX_HIDE_SUKISU_PATCH"
+            git -C kernel_experiment/KernelSU apply \
+              --whitespace=error-all \
+              "$GITHUB_WORKSPACE/$SELINUX_HIDE_SUKISU_PATCH"
+            git -C kernel_experiment/KernelSU diff --check
+          fi
 
       - name: Apply baseline and experimental patches exactly
         shell: bash
@@ -432,23 +470,36 @@ jobs:
           diff -u "$RUNNER_TEMP/baseline-hook-files.expected" \
             "$RUNNER_TEMP/baseline-hook-files.actual"
 
-          git -C kernel_experiment apply --check --whitespace=error-all \
-            "$GITHUB_WORKSPACE/$SUSFS_PATCH"
-          git -C kernel_experiment apply --whitespace=error-all \
-            "$GITHUB_WORKSPACE/$SUSFS_PATCH"
-          git -C kernel_experiment apply --check --whitespace=error-all \
-            "$GITHUB_WORKSPACE/$SELINUX_HIDE_KERNEL_PATCH"
-          git -C kernel_experiment apply --whitespace=error-all \
-            "$GITHUB_WORKSPACE/$SELINUX_HIDE_KERNEL_PATCH"
-          git -C kernel_experiment add -N \
-            fs/susfs.c include/linux/susfs.h include/linux/susfs_def.h
+          if test "$ENABLE_SUSFS" = "true"; then
+            git -C kernel_experiment apply --check \
+              --whitespace=error-all \
+              "$GITHUB_WORKSPACE/$SUSFS_PATCH"
+            git -C kernel_experiment apply --whitespace=error-all \
+              "$GITHUB_WORKSPACE/$SUSFS_PATCH"
+            git -C kernel_experiment add -N \
+              fs/susfs.c include/linux/susfs.h include/linux/susfs_def.h
+          fi
+          if test "$ENABLE_SELINUX_HIDE" = "true"; then
+            git -C kernel_experiment apply --check \
+              --whitespace=error-all \
+              "$GITHUB_WORKSPACE/$SELINUX_HIDE_KERNEL_PATCH"
+            git -C kernel_experiment apply --whitespace=error-all \
+              "$GITHUB_WORKSPACE/$SELINUX_HIDE_KERNEL_PATCH"
+          fi
           git -C kernel_experiment diff --check
           git -C kernel_experiment diff --name-only \
             -- fs include kernel security |
             LC_ALL=C sort -u \
             > "$RUNNER_TEMP/susfs-kernel-files.actual"
-          cat "$RUNNER_TEMP/susfs-kernel-files.expected" \
-            "$RUNNER_TEMP/selinux-hide-kernel-files.expected" |
+          if test "$ENABLE_SUSFS" = "true"; then
+            expected_files="$RUNNER_TEMP/susfs-kernel-files.expected"
+          else
+            expected_files="/dev/null"
+          fi
+          if test "$ENABLE_SELINUX_HIDE" = "true"; then
+            expected_files="$expected_files $RUNNER_TEMP/selinux-hide-kernel-files.expected"
+          fi
+          cat $expected_files |
             LC_ALL=C sort -u > "$RUNNER_TEMP/experiment-files.expected"
           diff -u "$RUNNER_TEMP/experiment-files.expected" \
             "$RUNNER_TEMP/susfs-kernel-files.actual"
@@ -462,6 +513,7 @@ jobs:
           cp "$RUNNER_TEMP/"*.actual audit/
 
       - name: Audit Linux 4.19 SELinux hide backport
+        if: ${{ env.ENABLE_SELINUX_HIDE == 'true' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -509,6 +561,7 @@ jobs:
           fi
 
       - name: Audit v2.2 source identity and minimal adaptations
+        if: ${{ env.ENABLE_SUSFS == 'true' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -645,13 +698,15 @@ jobs:
             scripts/config --file "$out/.config" -d KPM
             scripts/config --file "$out/.config" -e KALLSYMS
             scripts/config --file "$out/.config" -e KALLSYMS_ALL
-            if test "$tree" = kernel_experiment; then
+            if test "$tree" = kernel_experiment && \
+               test "$ENABLE_SELINUX_HIDE" = "true"; then
               scripts/config --file "$out/.config" \
                 -e KSU_SELINUX_HIDE_4_19
             fi
             susfs_children_off "$out/.config"
 
-            if test "$profile" = baseline; then
+            if test "$profile" = baseline || \
+               test "$ENABLE_SUSFS" != "true"; then
               scripts/config --file "$out/.config" -d KSU_SUSFS
             else
               scripts/config --file "$out/.config" -e KSU_SUSFS
@@ -771,121 +826,154 @@ jobs:
             exit 1
           fi
 
-          configure_tree kernel_experiment out-smoke smoke
-          verify_common_config kernel_experiment/out-smoke/.config
-          verify_selinux_hide_config kernel_experiment/out-smoke/.config
-          verify_susfs_profile kernel_experiment/out-smoke/.config smoke
+          if test "$ENABLE_SUSFS" = "true"; then
+            configure_tree kernel_experiment out-smoke smoke
+            verify_common_config kernel_experiment/out-smoke/.config
+            verify_susfs_profile kernel_experiment/out-smoke/.config smoke
+            if test "$ENABLE_SELINUX_HIDE" = "true"; then
+              verify_selinux_hide_config \
+                kernel_experiment/out-smoke/.config
+            fi
 
-          if test "$PROFILE" = minimal-mount ||
-             test "$PROFILE" = extended-stat ||
-             test "$PROFILE" = extended-full; then
-            configure_tree kernel_experiment out-minimal-mount minimal-mount
-            verify_common_config \
-              kernel_experiment/out-minimal-mount/.config
-            verify_selinux_hide_config \
-              kernel_experiment/out-minimal-mount/.config
-            verify_susfs_profile \
-              kernel_experiment/out-minimal-mount/.config minimal-mount
+            if test "$PROFILE" = minimal-mount ||
+               test "$PROFILE" = extended-stat ||
+               test "$PROFILE" = extended-full; then
+              configure_tree kernel_experiment out-minimal-mount \
+                minimal-mount
+              verify_common_config \
+                kernel_experiment/out-minimal-mount/.config
+              verify_susfs_profile \
+                kernel_experiment/out-minimal-mount/.config minimal-mount
+              if test "$ENABLE_SELINUX_HIDE" = "true"; then
+                verify_selinux_hide_config \
+                  kernel_experiment/out-minimal-mount/.config
+              fi
 
-            cmp \
-              <(sed \
-                '/^CONFIG_KSU_SUSFS_SUS_MOUNT=/d;
-                 /^# CONFIG_KSU_SUSFS_SUS_MOUNT is not set$/d' \
-                kernel_experiment/out-smoke/.config) \
-              <(sed \
-                '/^CONFIG_KSU_SUSFS_SUS_MOUNT=/d;
-                 /^# CONFIG_KSU_SUSFS_SUS_MOUNT is not set$/d' \
-                kernel_experiment/out-minimal-mount/.config)
-          fi
+              cmp \
+                <(sed \
+                  '/^CONFIG_KSU_SUSFS_SUS_MOUNT=/d;
+                   /^# CONFIG_KSU_SUSFS_SUS_MOUNT is not set$/d' \
+                  kernel_experiment/out-smoke/.config) \
+                <(sed \
+                  '/^CONFIG_KSU_SUSFS_SUS_MOUNT=/d;
+                   /^# CONFIG_KSU_SUSFS_SUS_MOUNT is not set$/d' \
+                  kernel_experiment/out-minimal-mount/.config)
+            fi
 
-          if test "$PROFILE" = extended-stat; then
-            configure_tree kernel_experiment out-extended-stat extended-stat
-            verify_common_config \
-              kernel_experiment/out-extended-stat/.config
-            verify_selinux_hide_config \
-              kernel_experiment/out-extended-stat/.config
-            verify_susfs_profile \
-              kernel_experiment/out-extended-stat/.config extended-stat
+            if test "$PROFILE" = extended-stat; then
+              configure_tree kernel_experiment out-extended-stat \
+                extended-stat
+              verify_common_config \
+                kernel_experiment/out-extended-stat/.config
+              verify_susfs_profile \
+                kernel_experiment/out-extended-stat/.config extended-stat
+              if test "$ENABLE_SELINUX_HIDE" = "true"; then
+                verify_selinux_hide_config \
+                  kernel_experiment/out-extended-stat/.config
+              fi
 
-            cmp \
-              <(sed \
-                '/^CONFIG_KSU_SUSFS_SUS_KSTAT=/d;
-                 /^# CONFIG_KSU_SUSFS_SUS_KSTAT is not set$/d' \
-                kernel_experiment/out-minimal-mount/.config) \
-              <(sed \
-                '/^CONFIG_KSU_SUSFS_SUS_KSTAT=/d;
-                 /^# CONFIG_KSU_SUSFS_SUS_KSTAT is not set$/d' \
-                kernel_experiment/out-extended-stat/.config)
-          fi
+              cmp \
+                <(sed \
+                  '/^CONFIG_KSU_SUSFS_SUS_KSTAT=/d;
+                   /^# CONFIG_KSU_SUSFS_SUS_KSTAT is not set$/d' \
+                  kernel_experiment/out-minimal-mount/.config) \
+                <(sed \
+                  '/^CONFIG_KSU_SUSFS_SUS_KSTAT=/d;
+                   /^# CONFIG_KSU_SUSFS_SUS_KSTAT is not set$/d' \
+                  kernel_experiment/out-extended-stat/.config)
+            fi
 
-          if test "$PROFILE" = extended-full; then
-            configure_tree kernel_experiment out-extended-full extended-full
-            verify_common_config \
-              kernel_experiment/out-extended-full/.config
-            verify_selinux_hide_config \
-              kernel_experiment/out-extended-full/.config
-            verify_susfs_profile \
-              kernel_experiment/out-extended-full/.config extended-full
+            if test "$PROFILE" = extended-full; then
+              configure_tree kernel_experiment out-extended-full \
+                extended-full
+              verify_common_config \
+                kernel_experiment/out-extended-full/.config
+              verify_susfs_profile \
+                kernel_experiment/out-extended-full/.config extended-full
+              if test "$ENABLE_SELINUX_HIDE" = "true"; then
+                verify_selinux_hide_config \
+                  kernel_experiment/out-extended-full/.config
+              fi
 
-            cmp \
-              <(sed -E \
-                '/^CONFIG_KSU_SUSFS_(SUS_PATH|SUS_KSTAT|SPOOF_UNAME|HIDE_KSU_SUSFS_SYMBOLS|SPOOF_CMDLINE_OR_BOOTCONFIG|OPEN_REDIRECT|SUS_MAP)=/d;
-                 /^# CONFIG_KSU_SUSFS_(SUS_PATH|SUS_KSTAT|SPOOF_UNAME|HIDE_KSU_SUSFS_SYMBOLS|SPOOF_CMDLINE_OR_BOOTCONFIG|OPEN_REDIRECT|SUS_MAP) is not set$/d' \
-                kernel_experiment/out-minimal-mount/.config) \
-              <(sed -E \
-                '/^CONFIG_KSU_SUSFS_(SUS_PATH|SUS_KSTAT|SPOOF_UNAME|HIDE_KSU_SUSFS_SYMBOLS|SPOOF_CMDLINE_OR_BOOTCONFIG|OPEN_REDIRECT|SUS_MAP)=/d;
-                 /^# CONFIG_KSU_SUSFS_(SUS_PATH|SUS_KSTAT|SPOOF_UNAME|HIDE_KSU_SUSFS_SYMBOLS|SPOOF_CMDLINE_OR_BOOTCONFIG|OPEN_REDIRECT|SUS_MAP) is not set$/d' \
-                kernel_experiment/out-extended-full/.config)
-          fi
+              cmp \
+                <(sed -E \
+                  '/^CONFIG_KSU_SUSFS_(SUS_PATH|SUS_KSTAT|SPOOF_UNAME|HIDE_KSU_SUSFS_SYMBOLS|SPOOF_CMDLINE_OR_BOOTCONFIG|OPEN_REDIRECT|SUS_MAP)=/d;
+                   /^# CONFIG_KSU_SUSFS_(SUS_PATH|SUS_KSTAT|SPOOF_UNAME|HIDE_KSU_SUSFS_SYMBOLS|SPOOF_CMDLINE_OR_BOOTCONFIG|OPEN_REDIRECT|SUS_MAP) is not set$/d' \
+                  kernel_experiment/out-minimal-mount/.config) \
+                <(sed -E \
+                  '/^CONFIG_KSU_SUSFS_(SUS_PATH|SUS_KSTAT|SPOOF_UNAME|HIDE_KSU_SUSFS_SYMBOLS|SPOOF_CMDLINE_OR_BOOTCONFIG|OPEN_REDIRECT|SUS_MAP)=/d;
+                   /^# CONFIG_KSU_SUSFS_(SUS_PATH|SUS_KSTAT|SPOOF_UNAME|HIDE_KSU_SUSFS_SYMBOLS|SPOOF_CMDLINE_OR_BOOTCONFIG|OPEN_REDIRECT|SUS_MAP) is not set$/d' \
+                  kernel_experiment/out-extended-full/.config)
+            fi
 
-          kernel_experiment/scripts/diffconfig \
-            kernel_baseline/out-baseline/.config \
-            kernel_experiment/out-smoke/.config \
-            > audit/config-baseline-to-smoke.diff
-          if test "$PROFILE" = minimal-mount; then
             kernel_experiment/scripts/diffconfig \
+              kernel_baseline/out-baseline/.config \
               kernel_experiment/out-smoke/.config \
-              kernel_experiment/out-minimal-mount/.config \
-              > audit/config-smoke-to-minimal-mount.diff
-          fi
-          if test "$PROFILE" = extended-stat; then
+              > audit/config-baseline-to-smoke.diff
+            if test "$PROFILE" = minimal-mount; then
+              kernel_experiment/scripts/diffconfig \
+                kernel_experiment/out-smoke/.config \
+                kernel_experiment/out-minimal-mount/.config \
+                > audit/config-smoke-to-minimal-mount.diff
+            fi
+            if test "$PROFILE" = extended-stat; then
+              kernel_experiment/scripts/diffconfig \
+                kernel_experiment/out-smoke/.config \
+                kernel_experiment/out-minimal-mount/.config \
+                > audit/config-smoke-to-minimal-mount.diff
+              kernel_experiment/scripts/diffconfig \
+                kernel_experiment/out-minimal-mount/.config \
+                kernel_experiment/out-extended-stat/.config \
+                > audit/config-minimal-mount-to-extended-stat.diff
+              test "$(
+                wc -l < audit/config-minimal-mount-to-extended-stat.diff
+              )" -eq 1
+              grep -Fqx ' KSU_SUSFS_SUS_KSTAT n -> y' \
+                audit/config-minimal-mount-to-extended-stat.diff
+            fi
+            if test "$PROFILE" = extended-full; then
+              kernel_experiment/scripts/diffconfig \
+                kernel_experiment/out-smoke/.config \
+                kernel_experiment/out-minimal-mount/.config \
+                > audit/config-smoke-to-minimal-mount.diff
+              kernel_experiment/scripts/diffconfig \
+                kernel_experiment/out-minimal-mount/.config \
+                kernel_experiment/out-extended-full/.config \
+                > audit/config-minimal-mount-to-extended-full.diff
+              test "$(
+                wc -l < audit/config-minimal-mount-to-extended-full.diff
+              )" -eq 7
+              for option in \
+                KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS \
+                KSU_SUSFS_OPEN_REDIRECT \
+                KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG \
+                KSU_SUSFS_SPOOF_UNAME \
+                KSU_SUSFS_SUS_KSTAT \
+                KSU_SUSFS_SUS_MAP \
+                KSU_SUSFS_SUS_PATH; do
+                grep -Fqx " ${option} n -> y" \
+                  audit/config-minimal-mount-to-extended-full.diff
+              done
+            fi
+          else
+            configure_tree kernel_experiment out-selected selected
+            verify_common_config \
+              kernel_experiment/out-selected/.config
+            grep -q '^# CONFIG_KSU_SUSFS is not set$' \
+              kernel_experiment/out-selected/.config
+            if grep -Eq '^CONFIG_KSU_SUSFS(_[A-Z0-9_]+)?=[ym]$' \
+              kernel_experiment/out-selected/.config; then
+              echo "::error::SUSFS was enabled without enable_susfs."
+              exit 1
+            fi
+            if test "$ENABLE_SELINUX_HIDE" = "true"; then
+              verify_selinux_hide_config \
+                kernel_experiment/out-selected/.config
+            fi
             kernel_experiment/scripts/diffconfig \
-              kernel_experiment/out-smoke/.config \
-              kernel_experiment/out-minimal-mount/.config \
-              > audit/config-smoke-to-minimal-mount.diff
-            kernel_experiment/scripts/diffconfig \
-              kernel_experiment/out-minimal-mount/.config \
-              kernel_experiment/out-extended-stat/.config \
-              > audit/config-minimal-mount-to-extended-stat.diff
-            test "$(
-              wc -l < audit/config-minimal-mount-to-extended-stat.diff
-            )" -eq 1
-            grep -Fqx ' KSU_SUSFS_SUS_KSTAT n -> y' \
-              audit/config-minimal-mount-to-extended-stat.diff
-          fi
-          if test "$PROFILE" = extended-full; then
-            kernel_experiment/scripts/diffconfig \
-              kernel_experiment/out-smoke/.config \
-              kernel_experiment/out-minimal-mount/.config \
-              > audit/config-smoke-to-minimal-mount.diff
-            kernel_experiment/scripts/diffconfig \
-              kernel_experiment/out-minimal-mount/.config \
-              kernel_experiment/out-extended-full/.config \
-              > audit/config-minimal-mount-to-extended-full.diff
-            test "$(
-              wc -l < audit/config-minimal-mount-to-extended-full.diff
-            )" -eq 7
-            for option in \
-              KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS \
-              KSU_SUSFS_OPEN_REDIRECT \
-              KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG \
-              KSU_SUSFS_SPOOF_UNAME \
-              KSU_SUSFS_SUS_KSTAT \
-              KSU_SUSFS_SUS_MAP \
-              KSU_SUSFS_SUS_PATH; do
-              grep -Fqx " ${option} n -> y" \
-                audit/config-minimal-mount-to-extended-full.diff
-            done
+              kernel_baseline/out-baseline/.config \
+              kernel_experiment/out-selected/.config \
+              > audit/config-baseline-to-selected.diff
           fi
 
       - name: Build baseline, smoke, and selected profile
@@ -919,21 +1007,26 @@ jobs:
 
           build_kernel kernel_baseline out-baseline \
             audit/build-baseline.log
-          build_kernel kernel_experiment out-smoke \
-            audit/build-smoke.log
-          if test "$PROFILE" = minimal-mount ||
-             test "$PROFILE" = extended-stat ||
-             test "$PROFILE" = extended-full; then
-            build_kernel kernel_experiment out-minimal-mount \
-              audit/build-minimal-mount.log
-          fi
-          if test "$PROFILE" = extended-stat; then
-            build_kernel kernel_experiment out-extended-stat \
-              audit/build-extended-stat.log
-          fi
-          if test "$PROFILE" = extended-full; then
-            build_kernel kernel_experiment out-extended-full \
-              audit/build-extended-full.log
+          if test "$ENABLE_SUSFS" = "true"; then
+            build_kernel kernel_experiment out-smoke \
+              audit/build-smoke.log
+            if test "$PROFILE" = minimal-mount ||
+               test "$PROFILE" = extended-stat ||
+               test "$PROFILE" = extended-full; then
+              build_kernel kernel_experiment out-minimal-mount \
+                audit/build-minimal-mount.log
+            fi
+            if test "$PROFILE" = extended-stat; then
+              build_kernel kernel_experiment out-extended-stat \
+                audit/build-extended-stat.log
+            fi
+            if test "$PROFILE" = extended-full; then
+              build_kernel kernel_experiment out-extended-full \
+                audit/build-extended-full.log
+            fi
+          else
+            build_kernel kernel_experiment out-selected \
+              audit/build-selected.log
           fi
 
       - name: Audit warnings, symbols, configuration, and Image growth
@@ -955,63 +1048,84 @@ jobs:
 
           normalize_warnings audit/build-baseline.log \
             audit/warnings-baseline.txt
-          normalize_warnings audit/build-smoke.log \
-            audit/warnings-smoke.txt
-          comm -13 audit/warnings-baseline.txt audit/warnings-smoke.txt \
-            > audit/warnings-new-in-smoke.txt
-          if test -s audit/warnings-new-in-smoke.txt; then
-            echo "::error::The smoke build introduced new compiler warnings."
-            cat audit/warnings-new-in-smoke.txt
-            exit 1
-          fi
-
-          if test "$PROFILE" = minimal-mount ||
-             test "$PROFILE" = extended-stat ||
-             test "$PROFILE" = extended-full; then
-            normalize_warnings audit/build-minimal-mount.log \
-              audit/warnings-minimal-mount.txt
-            comm -13 audit/warnings-smoke.txt \
-              audit/warnings-minimal-mount.txt \
-              > audit/warnings-new-in-minimal-mount.txt
-            if test -s audit/warnings-new-in-minimal-mount.txt; then
-              echo "::error::minimal-mount introduced new compiler warnings."
-              cat audit/warnings-new-in-minimal-mount.txt
+          if test "$ENABLE_SUSFS" = "true"; then
+            normalize_warnings audit/build-smoke.log \
+              audit/warnings-smoke.txt
+            comm -13 audit/warnings-baseline.txt \
+              audit/warnings-smoke.txt \
+              > audit/warnings-new-in-smoke.txt
+            if test -s audit/warnings-new-in-smoke.txt; then
+              echo "::error::The smoke build introduced new compiler warnings."
+              cat audit/warnings-new-in-smoke.txt
+              exit 1
+            fi
+          else
+            normalize_warnings audit/build-selected.log \
+              audit/warnings-selected.txt
+            comm -13 audit/warnings-baseline.txt \
+              audit/warnings-selected.txt \
+              > audit/warnings-new-in-selected.txt
+            if test -s audit/warnings-new-in-selected.txt; then
+              echo "::error::The selected build introduced new compiler warnings."
+              cat audit/warnings-new-in-selected.txt
               exit 1
             fi
           fi
 
-          if test "$PROFILE" = extended-stat; then
-            normalize_warnings audit/build-extended-stat.log \
-              audit/warnings-extended-stat.txt
-            comm -13 audit/warnings-minimal-mount.txt \
-              audit/warnings-extended-stat.txt \
-              > audit/warnings-new-in-extended-stat.txt
-            if test -s audit/warnings-new-in-extended-stat.txt; then
-              echo "::error::extended-stat introduced new compiler warnings."
-              cat audit/warnings-new-in-extended-stat.txt
-              exit 1
+          if test "$ENABLE_SUSFS" = "true"; then
+            if test "$PROFILE" = minimal-mount ||
+               test "$PROFILE" = extended-stat ||
+               test "$PROFILE" = extended-full; then
+              normalize_warnings audit/build-minimal-mount.log \
+                audit/warnings-minimal-mount.txt
+              comm -13 audit/warnings-smoke.txt \
+                audit/warnings-minimal-mount.txt \
+                > audit/warnings-new-in-minimal-mount.txt
+              if test -s audit/warnings-new-in-minimal-mount.txt; then
+                echo "::error::minimal-mount introduced new compiler warnings."
+                cat audit/warnings-new-in-minimal-mount.txt
+                exit 1
+              fi
+            fi
+
+            if test "$PROFILE" = extended-stat; then
+              normalize_warnings audit/build-extended-stat.log \
+                audit/warnings-extended-stat.txt
+              comm -13 audit/warnings-minimal-mount.txt \
+                audit/warnings-extended-stat.txt \
+                > audit/warnings-new-in-extended-stat.txt
+              if test -s audit/warnings-new-in-extended-stat.txt; then
+                echo "::error::extended-stat introduced new compiler warnings."
+                cat audit/warnings-new-in-extended-stat.txt
+                exit 1
+              fi
+            fi
+
+            if test "$PROFILE" = extended-full; then
+              normalize_warnings audit/build-extended-full.log \
+                audit/warnings-extended-full.txt
+              comm -13 audit/warnings-minimal-mount.txt \
+                audit/warnings-extended-full.txt \
+                > audit/warnings-new-in-extended-full.txt
+              if test -s audit/warnings-new-in-extended-full.txt; then
+                echo "::error::extended-full introduced new compiler warnings."
+                cat audit/warnings-new-in-extended-full.txt
+                exit 1
+              fi
             fi
           fi
 
-          if test "$PROFILE" = extended-full; then
-            normalize_warnings audit/build-extended-full.log \
-              audit/warnings-extended-full.txt
-            comm -13 audit/warnings-minimal-mount.txt \
-              audit/warnings-extended-full.txt \
-              > audit/warnings-new-in-extended-full.txt
-            if test -s audit/warnings-new-in-extended-full.txt; then
-              echo "::error::extended-full introduced new compiler warnings."
-              cat audit/warnings-new-in-extended-full.txt
-              exit 1
-            fi
+          build_logs="audit/build-baseline.log"
+          if test "$ENABLE_SUSFS" = "true"; then
+            build_logs="$build_logs audit/build-smoke.log \
+              audit/build-minimal-mount.log audit/build-extended-stat.log \
+              audit/build-extended-full.log"
+          else
+            build_logs="$build_logs audit/build-selected.log"
           fi
-
           if grep -Eqi \
             'undefined reference|duplicate symbol|ld\.lld: error' \
-            audit/build-baseline.log audit/build-smoke.log \
-            audit/build-minimal-mount.log \
-            audit/build-extended-stat.log \
-            audit/build-extended-full.log 2>/dev/null; then
+            $build_logs 2>/dev/null; then
             echo "::error::A linker error signature is present."
             exit 1
           fi
@@ -1022,9 +1136,14 @@ jobs:
             grep -Eq "[[:space:]]${symbol}$" "$map"
           }
 
+          if test "$ENABLE_SUSFS" = "true"; then
+            second_map=kernel_experiment/out-smoke/System.map
+          else
+            second_map=kernel_experiment/out-selected/System.map
+          fi
           for map in \
             kernel_baseline/out-baseline/System.map \
-            kernel_experiment/out-smoke/System.map; do
+            "$second_map"; do
             for symbol in \
               kernelsu_init \
               ksu_handle_execveat \
@@ -1036,31 +1155,8 @@ jobs:
             done
           done
 
-          for symbol in \
-            susfs_init \
-            susfs_show_version \
-            susfs_show_variant \
-            susfs_get_enabled_features \
-            susfs_enable_log \
-            susfs_set_avc_log_spoofing \
-            susfs_start_sdcard_monitor_fn \
-            susfs_extra_works \
-            ksu_handle_setresuid \
-            ksu_handle_execveat_sucompat \
-            ksu_handle_vfs_fstat; do
-            require_symbol kernel_experiment/out-smoke/System.map "$symbol"
-          done
-
-          if test "$PROFILE" = minimal-mount ||
-             test "$PROFILE" = extended-stat ||
-             test "$PROFILE" = extended-full; then
+          if test "$ENABLE_SUSFS" = "true"; then
             for symbol in \
-              kernelsu_init \
-              ksu_handle_execveat \
-              ksu_handle_faccessat \
-              ksu_handle_vfs_read \
-              ksu_handle_stat \
-              ksu_handle_sys_reboot \
               susfs_init \
               susfs_show_version \
               susfs_show_variant \
@@ -1069,145 +1165,198 @@ jobs:
               susfs_set_avc_log_spoofing \
               susfs_start_sdcard_monitor_fn \
               susfs_extra_works \
-              susfs_set_hide_sus_mnts_for_non_su_procs \
-              susfs_get_non_sus_mnt_id_from_mnt \
-              susfs_get_non_sus_vfsmnt_from_vfsmnt \
               ksu_handle_setresuid \
               ksu_handle_execveat_sucompat \
               ksu_handle_vfs_fstat; do
               require_symbol \
-                kernel_experiment/out-minimal-mount/System.map "$symbol"
+                kernel_experiment/out-smoke/System.map "$symbol"
             done
           fi
 
-          if test "$PROFILE" = extended-stat; then
+          if test "$ENABLE_SELINUX_HIDE" = "true"; then
             for symbol in \
-              kernelsu_init \
-              ksu_handle_execveat \
-              ksu_handle_faccessat \
-              ksu_handle_vfs_read \
-              ksu_handle_stat \
-              ksu_handle_sys_reboot \
-              susfs_init \
-              susfs_show_version \
-              susfs_show_variant \
-              susfs_get_enabled_features \
-              susfs_enable_log \
-              susfs_extra_works \
-              susfs_set_hide_sus_mnts_for_non_su_procs \
-              susfs_get_non_sus_mnt_id_from_mnt \
-              susfs_get_non_sus_vfsmnt_from_vfsmnt \
-              susfs_add_sus_kstat \
-              susfs_update_sus_kstat \
-              susfs_sus_kstat_spoof_generic_fillattr \
-              susfs_sus_kstat_spoof_show_map_vma \
-              ksu_handle_setresuid \
-              ksu_handle_execveat_sucompat \
-              ksu_handle_vfs_fstat; do
-              require_symbol \
-                kernel_experiment/out-extended-stat/System.map "$symbol"
-            done
-          fi
-
-          if test "$PROFILE" = extended-full; then
-            for symbol in \
-              kernelsu_init \
-              ksu_handle_execveat \
-              ksu_handle_faccessat \
-              ksu_handle_vfs_read \
-              ksu_handle_stat \
-              ksu_handle_sys_reboot \
-              susfs_init \
-              susfs_show_version \
-              susfs_show_variant \
-              susfs_get_enabled_features \
-              susfs_enable_log \
-              susfs_extra_works \
-              susfs_add_sus_path \
-              susfs_add_sus_path_loop \
-              susfs_set_hide_sus_mnts_for_non_su_procs \
-              susfs_add_sus_kstat \
-              susfs_update_sus_kstat \
-              susfs_set_uname \
-              susfs_spoof_uname \
-              susfs_set_cmdline_or_bootconfig \
-              susfs_spoof_cmdline_or_bootconfig \
-              susfs_add_open_redirect \
-              susfs_open_redirect_spoof_do_sys_openat \
-              susfs_add_sus_map \
               ksu_selinux_hide_init \
               ksu_selinux_hide_exit \
               ksu_selinux_hide_handle_second_stage \
               ksu_selinux_hide_handle_post_fs_data \
               ksu_selinux_hide_drop_backup_if_unused \
               ksu_dup_selinux_ss \
-              ksu_destroy_selinux_ss \
-              ksu_handle_setresuid \
-              ksu_handle_execveat_sucompat \
-              ksu_handle_vfs_fstat; do
-              require_symbol \
-                kernel_experiment/out-extended-full/System.map "$symbol"
+              ksu_destroy_selinux_ss; do
+              require_symbol "$second_map" "$symbol"
             done
+          fi
+
+          if test "$ENABLE_SUSFS" = "true"; then
+            if test "$PROFILE" = minimal-mount ||
+               test "$PROFILE" = extended-stat ||
+               test "$PROFILE" = extended-full; then
+              for symbol in \
+                kernelsu_init \
+                ksu_handle_execveat \
+                ksu_handle_faccessat \
+                ksu_handle_vfs_read \
+                ksu_handle_stat \
+                ksu_handle_sys_reboot \
+                susfs_init \
+                susfs_show_version \
+                susfs_show_variant \
+                susfs_get_enabled_features \
+                susfs_enable_log \
+                susfs_set_avc_log_spoofing \
+                susfs_start_sdcard_monitor_fn \
+                susfs_extra_works \
+                susfs_set_hide_sus_mnts_for_non_su_procs \
+                susfs_get_non_sus_mnt_id_from_mnt \
+                susfs_get_non_sus_vfsmnt_from_vfsmnt \
+                ksu_handle_setresuid \
+                ksu_handle_execveat_sucompat \
+                ksu_handle_vfs_fstat; do
+                require_symbol \
+                  kernel_experiment/out-minimal-mount/System.map "$symbol"
+              done
+            fi
+
+            if test "$PROFILE" = extended-stat; then
+              for symbol in \
+                kernelsu_init \
+                ksu_handle_execveat \
+                ksu_handle_faccessat \
+                ksu_handle_vfs_read \
+                ksu_handle_stat \
+                ksu_handle_sys_reboot \
+                susfs_init \
+                susfs_show_version \
+                susfs_show_variant \
+                susfs_get_enabled_features \
+                susfs_enable_log \
+                susfs_extra_works \
+                susfs_set_hide_sus_mnts_for_non_su_procs \
+                susfs_get_non_sus_mnt_id_from_mnt \
+                susfs_get_non_sus_vfsmnt_from_vfsmnt \
+                susfs_add_sus_kstat \
+                susfs_update_sus_kstat \
+                susfs_sus_kstat_spoof_generic_fillattr \
+                susfs_sus_kstat_spoof_show_map_vma \
+                ksu_handle_setresuid \
+                ksu_handle_execveat_sucompat \
+                ksu_handle_vfs_fstat; do
+                require_symbol \
+                  kernel_experiment/out-extended-stat/System.map "$symbol"
+              done
+            fi
+
+            if test "$PROFILE" = extended-full; then
+              for symbol in \
+                kernelsu_init \
+                ksu_handle_execveat \
+                ksu_handle_faccessat \
+                ksu_handle_vfs_read \
+                ksu_handle_stat \
+                ksu_handle_sys_reboot \
+                susfs_init \
+                susfs_show_version \
+                susfs_show_variant \
+                susfs_get_enabled_features \
+                susfs_enable_log \
+                susfs_extra_works \
+                susfs_add_sus_path \
+                susfs_add_sus_path_loop \
+                susfs_set_hide_sus_mnts_for_non_su_procs \
+                susfs_add_sus_kstat \
+                susfs_update_sus_kstat \
+                susfs_set_uname \
+                susfs_spoof_uname \
+                susfs_set_cmdline_or_bootconfig \
+                susfs_spoof_cmdline_or_bootconfig \
+                susfs_add_open_redirect \
+                susfs_open_redirect_spoof_do_sys_openat \
+                susfs_add_sus_map \
+                ksu_handle_setresuid \
+                ksu_handle_execveat_sucompat \
+                ksu_handle_vfs_fstat; do
+                require_symbol \
+                  kernel_experiment/out-extended-full/System.map "$symbol"
+              done
+            fi
           fi
 
           awk '{print $3}' kernel_baseline/out-baseline/System.map |
             LC_ALL=C sort -u > audit/symbols-baseline.txt
-          awk '{print $3}' kernel_experiment/out-smoke/System.map |
-            LC_ALL=C sort -u > audit/symbols-smoke.txt
-          comm -3 audit/symbols-baseline.txt audit/symbols-smoke.txt \
-            > audit/system-map-baseline-to-smoke.diff
-          if test "$PROFILE" = minimal-mount ||
-             test "$PROFILE" = extended-stat ||
-             test "$PROFILE" = extended-full; then
+          if test "$ENABLE_SUSFS" = "true"; then
+            awk '{print $3}' kernel_experiment/out-smoke/System.map |
+              LC_ALL=C sort -u > audit/symbols-smoke.txt
+            comm -3 audit/symbols-baseline.txt audit/symbols-smoke.txt \
+              > audit/system-map-baseline-to-smoke.diff
+            if test "$PROFILE" = minimal-mount ||
+               test "$PROFILE" = extended-stat ||
+               test "$PROFILE" = extended-full; then
+              awk '{print $3}' \
+                kernel_experiment/out-minimal-mount/System.map |
+                LC_ALL=C sort -u > audit/symbols-minimal-mount.txt
+              comm -3 audit/symbols-smoke.txt \
+                audit/symbols-minimal-mount.txt \
+                > audit/system-map-smoke-to-minimal-mount.diff
+            fi
+            if test "$PROFILE" = extended-stat; then
+              awk '{print $3}' \
+                kernel_experiment/out-extended-stat/System.map |
+                LC_ALL=C sort -u > audit/symbols-extended-stat.txt
+              comm -3 audit/symbols-minimal-mount.txt \
+                audit/symbols-extended-stat.txt \
+                > audit/system-map-minimal-mount-to-extended-stat.diff
+            fi
+            if test "$PROFILE" = extended-full; then
+              awk '{print $3}' \
+                kernel_experiment/out-extended-full/System.map |
+                LC_ALL=C sort -u > audit/symbols-extended-full.txt
+              comm -3 audit/symbols-minimal-mount.txt \
+                audit/symbols-extended-full.txt \
+                > audit/system-map-minimal-mount-to-extended-full.diff
+            fi
+          else
             awk '{print $3}' \
-              kernel_experiment/out-minimal-mount/System.map |
-              LC_ALL=C sort -u > audit/symbols-minimal-mount.txt
-            comm -3 audit/symbols-smoke.txt \
-              audit/symbols-minimal-mount.txt \
-              > audit/system-map-smoke-to-minimal-mount.diff
-          fi
-          if test "$PROFILE" = extended-stat; then
-            awk '{print $3}' \
-              kernel_experiment/out-extended-stat/System.map |
-              LC_ALL=C sort -u > audit/symbols-extended-stat.txt
-            comm -3 audit/symbols-minimal-mount.txt \
-              audit/symbols-extended-stat.txt \
-              > audit/system-map-minimal-mount-to-extended-stat.diff
-          fi
-          if test "$PROFILE" = extended-full; then
-            awk '{print $3}' \
-              kernel_experiment/out-extended-full/System.map |
-              LC_ALL=C sort -u > audit/symbols-extended-full.txt
-            comm -3 audit/symbols-minimal-mount.txt \
-              audit/symbols-extended-full.txt \
-              > audit/system-map-minimal-mount-to-extended-full.diff
+              kernel_experiment/out-selected/System.map |
+              LC_ALL=C sort -u > audit/symbols-selected.txt
+            comm -3 audit/symbols-baseline.txt \
+              audit/symbols-selected.txt \
+              > audit/system-map-baseline-to-selected.diff
           fi
 
-          "$GITHUB_WORKSPACE/toolchains/clang/bin/llvm-nm" -u \
-            kernel_experiment/out-smoke/vmlinux \
-            > audit/unresolved-smoke.txt || true
-          if grep -Eqi 'susfs|ksu' audit/unresolved-smoke.txt; then
-            echo "::error::An unresolved KSU/SUSFS symbol remains."
-            exit 1
-          fi
-
-          if test "$PROFILE" = extended-stat; then
+          if test "$ENABLE_SUSFS" = "true"; then
             "$GITHUB_WORKSPACE/toolchains/clang/bin/llvm-nm" -u \
-              kernel_experiment/out-extended-stat/vmlinux \
-              > audit/unresolved-extended-stat.txt || true
-            if grep -Eqi 'susfs|ksu' \
-              audit/unresolved-extended-stat.txt; then
-              echo "::error::An unresolved extended-stat KSU/SUSFS symbol remains."
+              kernel_experiment/out-smoke/vmlinux \
+              > audit/unresolved-smoke.txt || true
+            if grep -Eqi 'susfs|ksu' audit/unresolved-smoke.txt; then
+              echo "::error::An unresolved KSU/SUSFS symbol remains."
               exit 1
             fi
-          fi
-          if test "$PROFILE" = extended-full; then
+
+            if test "$PROFILE" = extended-stat; then
+              "$GITHUB_WORKSPACE/toolchains/clang/bin/llvm-nm" -u \
+                kernel_experiment/out-extended-stat/vmlinux \
+                > audit/unresolved-extended-stat.txt || true
+              if grep -Eqi 'susfs|ksu' \
+                audit/unresolved-extended-stat.txt; then
+                echo "::error::An unresolved extended-stat KSU/SUSFS symbol remains."
+                exit 1
+              fi
+            fi
+            if test "$PROFILE" = extended-full; then
+              "$GITHUB_WORKSPACE/toolchains/clang/bin/llvm-nm" -u \
+                kernel_experiment/out-extended-full/vmlinux \
+                > audit/unresolved-extended-full.txt || true
+              if grep -Eqi 'susfs|ksu' \
+                audit/unresolved-extended-full.txt; then
+                echo "::error::An unresolved extended-full KSU/SUSFS symbol remains."
+                exit 1
+              fi
+            fi
+          else
             "$GITHUB_WORKSPACE/toolchains/clang/bin/llvm-nm" -u \
-              kernel_experiment/out-extended-full/vmlinux \
-              > audit/unresolved-extended-full.txt || true
-            if grep -Eqi 'susfs|ksu' \
-              audit/unresolved-extended-full.txt; then
-              echo "::error::An unresolved extended-full KSU/SUSFS symbol remains."
+              kernel_experiment/out-selected/vmlinux \
+              > audit/unresolved-selected.txt || true
+            if grep -Eqi 'susfs|ksu' audit/unresolved-selected.txt; then
+              echo "::error::An unresolved KSU symbol remains."
               exit 1
             fi
           fi
@@ -1216,69 +1365,88 @@ jobs:
             stat -c '%s' \
               kernel_baseline/out-baseline/arch/arm64/boot/Image
           )"
-          smoke_size="$(
-            stat -c '%s' \
-              kernel_experiment/out-smoke/arch/arm64/boot/Image
-          )"
-          smoke_delta="$((smoke_size - baseline_size))"
           {
             echo "baseline_bytes=$baseline_size"
-            echo "smoke_bytes=$smoke_size"
-            echo "smoke_delta_bytes=$smoke_delta"
             echo "max_growth_bytes=$MAX_IMAGE_GROWTH_BYTES"
             echo "max_growth_percent=$MAX_IMAGE_GROWTH_PERCENT"
           } > audit/image-size-report.txt
 
-          test "$smoke_delta" -le "$MAX_IMAGE_GROWTH_BYTES"
-          test "$((smoke_size * 100))" \
-            -le "$((baseline_size * (100 + MAX_IMAGE_GROWTH_PERCENT)))"
+          if test "$ENABLE_SUSFS" = "true"; then
+            smoke_size="$(
+              stat -c '%s' \
+                kernel_experiment/out-smoke/arch/arm64/boot/Image
+            )"
+            smoke_delta="$((smoke_size - baseline_size))"
+            {
+              echo "smoke_bytes=$smoke_size"
+              echo "smoke_delta_bytes=$smoke_delta"
+            } >> audit/image-size-report.txt
 
-          selected_out=out-smoke
-          if test "$PROFILE" = minimal-mount ||
-             test "$PROFILE" = extended-stat ||
-             test "$PROFILE" = extended-full; then
-            selected_out=out-minimal-mount
-            minimal_size="$(
-              stat -c '%s' \
-                kernel_experiment/out-minimal-mount/arch/arm64/boot/Image
-            )"
-            minimal_delta="$((minimal_size - baseline_size))"
-            {
-              echo "minimal_mount_bytes=$minimal_size"
-              echo "minimal_mount_delta_bytes=$minimal_delta"
-            } >> audit/image-size-report.txt
-            test "$minimal_delta" -le "$MAX_IMAGE_GROWTH_BYTES"
-            test "$((minimal_size * 100))" \
+            test "$smoke_delta" -le "$MAX_IMAGE_GROWTH_BYTES"
+            test "$((smoke_size * 100))" \
               -le "$((baseline_size * (100 + MAX_IMAGE_GROWTH_PERCENT)))"
-          fi
-          if test "$PROFILE" = extended-stat; then
-            selected_out=out-extended-stat
-            extended_size="$(
+
+            selected_out=out-smoke
+            if test "$PROFILE" = minimal-mount ||
+               test "$PROFILE" = extended-stat ||
+               test "$PROFILE" = extended-full; then
+              selected_out=out-minimal-mount
+              minimal_size="$(
+                stat -c '%s' \
+                  kernel_experiment/out-minimal-mount/arch/arm64/boot/Image
+              )"
+              minimal_delta="$((minimal_size - baseline_size))"
+              {
+                echo "minimal_mount_bytes=$minimal_size"
+                echo "minimal_mount_delta_bytes=$minimal_delta"
+              } >> audit/image-size-report.txt
+              test "$minimal_delta" -le "$MAX_IMAGE_GROWTH_BYTES"
+              test "$((minimal_size * 100))" \
+                -le "$((baseline_size * (100 + MAX_IMAGE_GROWTH_PERCENT)))"
+            fi
+            if test "$PROFILE" = extended-stat; then
+              selected_out=out-extended-stat
+              extended_size="$(
+                stat -c '%s' \
+                  kernel_experiment/out-extended-stat/arch/arm64/boot/Image
+              )"
+              extended_delta="$((extended_size - baseline_size))"
+              {
+                echo "extended_stat_bytes=$extended_size"
+                echo "extended_stat_delta_bytes=$extended_delta"
+              } >> audit/image-size-report.txt
+              test "$extended_delta" -le "$MAX_IMAGE_GROWTH_BYTES"
+              test "$((extended_size * 100))" \
+                -le "$((baseline_size * (100 + MAX_IMAGE_GROWTH_PERCENT)))"
+            fi
+            if test "$PROFILE" = extended-full; then
+              selected_out=out-extended-full
+              full_size="$(
+                stat -c '%s' \
+                  kernel_experiment/out-extended-full/arch/arm64/boot/Image
+              )"
+              full_delta="$((full_size - baseline_size))"
+              {
+                echo "extended_full_bytes=$full_size"
+                echo "extended_full_delta_bytes=$full_delta"
+              } >> audit/image-size-report.txt
+              test "$full_delta" -le "$MAX_IMAGE_GROWTH_BYTES"
+              test "$((full_size * 100))" \
+                -le "$((baseline_size * (100 + MAX_IMAGE_GROWTH_PERCENT)))"
+            fi
+          else
+            selected_out=out-selected
+            selected_size="$(
               stat -c '%s' \
-                kernel_experiment/out-extended-stat/arch/arm64/boot/Image
+                kernel_experiment/out-selected/arch/arm64/boot/Image
             )"
-            extended_delta="$((extended_size - baseline_size))"
+            selected_delta="$((selected_size - baseline_size))"
             {
-              echo "extended_stat_bytes=$extended_size"
-              echo "extended_stat_delta_bytes=$extended_delta"
+              echo "selected_bytes=$selected_size"
+              echo "selected_delta_bytes=$selected_delta"
             } >> audit/image-size-report.txt
-            test "$extended_delta" -le "$MAX_IMAGE_GROWTH_BYTES"
-            test "$((extended_size * 100))" \
-              -le "$((baseline_size * (100 + MAX_IMAGE_GROWTH_PERCENT)))"
-          fi
-          if test "$PROFILE" = extended-full; then
-            selected_out=out-extended-full
-            full_size="$(
-              stat -c '%s' \
-                kernel_experiment/out-extended-full/arch/arm64/boot/Image
-            )"
-            full_delta="$((full_size - baseline_size))"
-            {
-              echo "extended_full_bytes=$full_size"
-              echo "extended_full_delta_bytes=$full_delta"
-            } >> audit/image-size-report.txt
-            test "$full_delta" -le "$MAX_IMAGE_GROWTH_BYTES"
-            test "$((full_size * 100))" \
+            test "$selected_delta" -le "$MAX_IMAGE_GROWTH_BYTES"
+            test "$((selected_size * 100))" \
               -le "$((baseline_size * (100 + MAX_IMAGE_GROWTH_PERCENT)))"
           fi
           echo "SELECTED_OUT=$selected_out" >> "$GITHUB_ENV"
@@ -1287,42 +1455,63 @@ jobs:
             -- fs include kernel security |
             LC_ALL=C sort -u \
             > "$RUNNER_TEMP/susfs-kernel-files.after-build"
-          diff -u "$RUNNER_TEMP/experiment-files.expected" \
+          if test "$ENABLE_SUSFS" = "true"; then
+            expected_files="$RUNNER_TEMP/susfs-kernel-files.expected"
+          else
+            expected_files="/dev/null"
+          fi
+          if test "$ENABLE_SELINUX_HIDE" = "true"; then
+            expected_files="$expected_files $RUNNER_TEMP/selinux-hide-kernel-files.expected"
+          fi
+          cat $expected_files |
+            LC_ALL=C sort -u > "$RUNNER_TEMP/experiment-files.after"
+          diff -u "$RUNNER_TEMP/experiment-files.after" \
             "$RUNNER_TEMP/susfs-kernel-files.after-build"
 
           sha256sum \
             kernel_baseline/out-baseline/.config \
             kernel_baseline/out-baseline/System.map \
             kernel_baseline/out-baseline/arch/arm64/boot/Image \
-            kernel_experiment/out-smoke/.config \
-            kernel_experiment/out-smoke/System.map \
-            kernel_experiment/out-smoke/arch/arm64/boot/Image \
             > audit/kernel-build-files.sha256
-          if test "$PROFILE" = minimal-mount ||
-             test "$PROFILE" = extended-stat ||
-             test "$PROFILE" = extended-full; then
+          if test "$ENABLE_SUSFS" = "true"; then
             sha256sum \
-              kernel_experiment/out-minimal-mount/.config \
-              kernel_experiment/out-minimal-mount/System.map \
-              kernel_experiment/out-minimal-mount/arch/arm64/boot/Image \
+              kernel_experiment/out-smoke/.config \
+              kernel_experiment/out-smoke/System.map \
+              kernel_experiment/out-smoke/arch/arm64/boot/Image \
               >> audit/kernel-build-files.sha256
-          fi
-          if test "$PROFILE" = extended-stat; then
+            if test "$PROFILE" = minimal-mount ||
+               test "$PROFILE" = extended-stat ||
+               test "$PROFILE" = extended-full; then
+              sha256sum \
+                kernel_experiment/out-minimal-mount/.config \
+                kernel_experiment/out-minimal-mount/System.map \
+                kernel_experiment/out-minimal-mount/arch/arm64/boot/Image \
+                >> audit/kernel-build-files.sha256
+            fi
+            if test "$PROFILE" = extended-stat; then
+              sha256sum \
+                kernel_experiment/out-extended-stat/.config \
+                kernel_experiment/out-extended-stat/System.map \
+                kernel_experiment/out-extended-stat/arch/arm64/boot/Image \
+                >> audit/kernel-build-files.sha256
+            fi
+            if test "$PROFILE" = extended-full; then
+              sha256sum \
+                kernel_experiment/out-extended-full/.config \
+                kernel_experiment/out-extended-full/System.map \
+                kernel_experiment/out-extended-full/arch/arm64/boot/Image \
+                >> audit/kernel-build-files.sha256
+            fi
+          else
             sha256sum \
-              kernel_experiment/out-extended-stat/.config \
-              kernel_experiment/out-extended-stat/System.map \
-              kernel_experiment/out-extended-stat/arch/arm64/boot/Image \
-              >> audit/kernel-build-files.sha256
-          fi
-          if test "$PROFILE" = extended-full; then
-            sha256sum \
-              kernel_experiment/out-extended-full/.config \
-              kernel_experiment/out-extended-full/System.map \
-              kernel_experiment/out-extended-full/arch/arm64/boot/Image \
+              kernel_experiment/out-selected/.config \
+              kernel_experiment/out-selected/System.map \
+              kernel_experiment/out-selected/arch/arm64/boot/Image \
               >> audit/kernel-build-files.sha256
           fi
 
       - name: Build pinned official v2.2 userspace test tool
+        if: ${{ env.ENABLE_SUSFS == 'true' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -1362,6 +1551,7 @@ jobs:
             >> "$GITHUB_ENV"
 
       - name: Make audited AnyKernel3 package
+        if: ${{ env.USE_ANYKERNEL == 'true' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -1377,8 +1567,19 @@ jobs:
             "kernel_experiment/$SELECTED_OUT/arch/arm64/boot/Image" \
             AnyKernel3/Image
 
+          feature_tags=""
+          if test "$ENABLE_SUSFS" = "true"; then
+            feature_tags="SUSFS-v2.2-${PROFILE}"
+          else
+            feature_tags="NO-SUSFS"
+          fi
+          if test "$ENABLE_SELINUX_HIDE" = "true"; then
+            feature_tags="${feature_tags}-SELINUX-HIDE"
+          else
+            feature_tags="${feature_tags}-NO-SELINUX-HIDE"
+          fi
           sed -i \
-            "s/^kernel.string=.*/kernel.string=EXPERIMENTAL SELinux Hide 4.19 kebab SUSFS v2.2 KSU${SUKISU_DRIVER_VERSION}/" \
+            "s/^kernel.string=.*/kernel.string=TESTING SukiSU Ultra kebab ${feature_tags} KSU${SUKISU_DRIVER_VERSION}/" \
             AnyKernel3/anykernel.sh
           sed -i 's/^do.devicecheck=.*/do.devicecheck=1/' \
             AnyKernel3/anykernel.sh
@@ -1405,7 +1606,7 @@ jobs:
           sed -i 's/^write_boot;.*/flash_boot;/' AnyKernel3/anykernel.sh
 
           grep -Fqx \
-            "kernel.string=EXPERIMENTAL SELinux Hide 4.19 kebab SUSFS v2.2 KSU${SUKISU_DRIVER_VERSION}" \
+            "kernel.string=TESTING SukiSU Ultra kebab ${feature_tags} KSU${SUKISU_DRIVER_VERSION}" \
             AnyKernel3/anykernel.sh
           grep -q '^device.name1=OnePlus8T$' AnyKernel3/anykernel.sh
           grep -q '^device.name2=KB2000$' AnyKernel3/anykernel.sh
@@ -1431,7 +1632,7 @@ jobs:
           fi
 
           rm -f AnyKernel3/README.md
-          prefix="EXPERIMENTAL-SELINUX-HIDE_SukiSU-Ultra_kebab_SUSFS-v2.2"
+          prefix="TESTING_SukiSU-Ultra_kebab_${feature_tags}"
           pins="K-${KERNEL_COMMIT:0:12}_SU-${SUKISU_COMMIT:0:12}_SF-${SUSFS_COMMIT:0:12}_REF-${SM8250_REFERENCE_COMMIT:0:12}_AK-${ANYKERNEL_COMMIT:0:12}_TC-${CLANG_ARCHIVE_COMMIT:0:12}_WF-${GITHUB_SHA:0:12}"
           package_name="${prefix}_${pins}_KSU${SUKISU_DRIVER_VERSION}"
           (
@@ -1444,14 +1645,43 @@ jobs:
           echo "PACKAGE_NAME=$package_name" >> "$GITHUB_ENV"
           echo "KERNEL_ARTIFACT_NAME=$package_name" >> "$GITHUB_ENV"
 
+      - name: Prepare raw kernel artifact without AnyKernel3
+        if: ${{ env.USE_ANYKERNEL != 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          feature_tags=""
+          if test "$ENABLE_SUSFS" = "true"; then
+            feature_tags="SUSFS-v2.2-${PROFILE}"
+          else
+            feature_tags="NO-SUSFS"
+          fi
+          if test "$ENABLE_SELINUX_HIDE" = "true"; then
+            feature_tags="${feature_tags}-SELINUX-HIDE"
+          else
+            feature_tags="${feature_tags}-NO-SELINUX-HIDE"
+          fi
+
+          package_name="RAW_${feature_tags}_K-${KERNEL_COMMIT:0:12}_SU-${SUKISU_COMMIT:0:12}_TC-${CLANG_ARCHIVE_COMMIT:0:12}_WF-${GITHUB_SHA:0:12}"
+          echo "PACKAGE_NAME=$package_name" >> "$GITHUB_ENV"
+          echo "KERNEL_ARTIFACT_NAME=$package_name" >> "$GITHUB_ENV"
+
       - name: Record provenance and assemble audit artifacts
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p artifacts/kernel/audit
 
-          cp "${PACKAGE_NAME}.zip" "${PACKAGE_NAME}.zip.sha256" \
-            artifacts/kernel/
+          if test "$USE_ANYKERNEL" = "true"; then
+            cp "${PACKAGE_NAME}.zip" "${PACKAGE_NAME}.zip.sha256" \
+              artifacts/kernel/
+          else
+            cp "kernel_experiment/$SELECTED_OUT/arch/arm64/boot/Image" \
+              artifacts/kernel/Image
+            sha256sum artifacts/kernel/Image \
+              > artifacts/kernel/Image.sha256
+          fi
           cp -a audit/. artifacts/kernel/audit/
           cp "kernel_experiment/$SELECTED_OUT/.config" \
             artifacts/kernel/selected.config
@@ -1468,7 +1698,14 @@ jobs:
             echo "device=kebab"
             echo "model=OnePlus 8T"
             echo "rom=LineageOS 23.2"
-            echo "profile=$DISPLAY_PROFILE"
+            if test "$ENABLE_SUSFS" = "true"; then
+              echo "profile=$PROFILE"
+            else
+              echo "profile=selected"
+            fi
+            echo "enable_susfs=$ENABLE_SUSFS"
+            echo "enable_selinux_hide=$ENABLE_SELINUX_HIDE"
+            echo "use_anykernel=$USE_ANYKERNEL"
             echo "track_upstream=$TRACK_UPSTREAM"
             echo "tracked_kernel_commit=${TRACKED_KERNEL_COMMIT:-}"
             echo "tracked_sukisu_commit=${TRACKED_SUKISU_COMMIT:-}"
@@ -1484,18 +1721,21 @@ jobs:
             echo "sukisu_branch=$SUKISU_BRANCH"
             echo "sukisu_commit=$SUKISU_COMMIT"
             echo "sukisu_driver_version=$SUKISU_DRIVER_VERSION"
-            echo "susfs_repository=$SUSFS_REPOSITORY"
-            echo "susfs_commit=$SUSFS_COMMIT"
-            echo "susfs_version=$SUSFS_VERSION"
-            echo "susfs_variant=NON-GKI"
-            echo "sm8250_reference_repository=$SM8250_REFERENCE_REPOSITORY"
-            echo "sm8250_reference_commit=$SM8250_REFERENCE_COMMIT"
+            if test "$ENABLE_SUSFS" = "true"; then
+              echo "susfs_repository=$SUSFS_REPOSITORY"
+              echo "susfs_commit=$SUSFS_COMMIT"
+              echo "susfs_version=$SUSFS_VERSION"
+              echo "susfs_variant=NON-GKI"
+              echo "sm8250_reference_repository=$SM8250_REFERENCE_REPOSITORY"
+              echo "sm8250_reference_commit=$SM8250_REFERENCE_COMMIT"
+            fi
+            if test "$ENABLE_SELINUX_HIDE" = "true"; then
+              echo "selinux_hide_port=linux-4.19"
+            fi
             echo "hook=manual-inline-combined"
             echo "kprobes=n"
             echo "kpm=n"
-            echo "selinux_enforcing_expected=y"
-            echo "selinux_hide_port=linux-4.19-experimental"
-            echo "susfs_avc_spoofing_changed=n"
+            echo "selinux_policy_modified=n"
             echo "ramdisk_modified=n"
             echo "dtb_modified=n"
             echo "dtbo_modified=n"
@@ -1510,27 +1750,36 @@ jobs:
                 --version | head -n1
             )"
             echo "android_ndk_version=$ANDROID_NDK_VERSION"
-            echo "package=${PACKAGE_NAME}.zip"
-            cat "${PACKAGE_NAME}.zip.sha256"
+            if test "$USE_ANYKERNEL" = "true"; then
+              echo "package=${PACKAGE_NAME}.zip"
+              cat "${PACKAGE_NAME}.zip.sha256"
+            else
+              echo "package=${PACKAGE_NAME} (raw Image/System.map/config)"
+              cat artifacts/kernel/Image.sha256
+            fi
             cat audit/patches.sha256
             cat artifacts/kernel/selected-build-files.sha256
           } | tee artifacts/kernel/build-provenance.txt
 
-          {
-            echo "status=TEST_ATTACHMENT_DO_NOT_AUTO_INSTALL"
-            echo "source_repository=$SUSFS_REPOSITORY"
-            echo "source_commit=$SUSFS_COMMIT"
-            echo "susfs_version=$SUSFS_VERSION"
-            echo "abi=arm64-v8a"
-            echo "android_ndk_version=$ANDROID_NDK_VERSION"
-            echo "builder_commit=$GITHUB_SHA"
-            cat artifacts/tool/ksu_susfs-v2.2.0-arm64.sha256
-          } | tee artifacts/tool/tool-provenance.txt
+          if test "$ENABLE_SUSFS" = "true"; then
+            {
+              echo "status=TEST_ATTACHMENT_DO_NOT_AUTO_INSTALL"
+              echo "source_repository=$SUSFS_REPOSITORY"
+              echo "source_commit=$SUSFS_COMMIT"
+              echo "susfs_version=$SUSFS_VERSION"
+              echo "abi=arm64-v8a"
+              echo "android_ndk_version=$ANDROID_NDK_VERSION"
+              echo "builder_commit=$GITHUB_SHA"
+              cat artifacts/tool/ksu_susfs-v2.2.0-arm64.sha256
+            } | tee artifacts/tool/tool-provenance.txt
+          fi
 
           sha256sum artifacts/kernel/build-provenance.txt \
             > artifacts/kernel/build-provenance.txt.sha256
-          sha256sum artifacts/tool/tool-provenance.txt \
-            > artifacts/tool/tool-provenance.txt.sha256
+          if test "$ENABLE_SUSFS" = "true"; then
+            sha256sum artifacts/tool/tool-provenance.txt \
+              > artifacts/tool/tool-provenance.txt.sha256
+          fi
 
       - name: Upload kernel package and audit
         uses: actions/upload-artifact@v4
@@ -1541,6 +1790,7 @@ jobs:
           retention-days: 7
 
       - name: Upload pinned v2.2 userspace test tool
+        if: ${{ env.ENABLE_SUSFS == 'true' }}
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.TOOL_ARTIFACT_NAME }}

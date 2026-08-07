@@ -1,6 +1,6 @@
 # OnePlus 8T SukiSU Ultra + SUSFS v2.2
 
-[![SUSFS build](https://github.com/Chinohana/oneplus-8t-kebab-sukisu-ultra-actions/actions/workflows/build-sukisu-susfs.yml/badge.svg?branch=main)](https://github.com/Chinohana/oneplus-8t-kebab-sukisu-ultra-actions/actions/workflows/build-sukisu-susfs.yml)
+[![Build](https://github.com/Chinohana/oneplus-8t-kebab-sukisu-ultra-actions/actions/workflows/build-sukisu-ultra.yml/badge.svg?branch=main)](https://github.com/Chinohana/oneplus-8t-kebab-sukisu-ultra-actions/actions/workflows/build-sukisu-ultra.yml)
 
 这是一个为 OnePlus 8T（`kebab` / KB2000）制作的内核构建项目。它在固定的
 LineageOS 23.2 Linux 4.19 内核上集成了 SukiSU Ultra 和 SUSFS v2.2。
@@ -74,27 +74,32 @@ SUSFS v2.2 废弃，因此没有重新加入。KPM 和 kprobes 也保持关闭�
 只想使用原来的无 SUSFS 版本时，请切换到 `legacy`。
 只想使用无 SELinux 隐藏的 SUSFS 版本时，请切换到 `SUSFS`。
 
-## 隐藏 SELinux 修改（可选功能）
+## 隐藏 SELinux 修改（默认包含）
 
 `main` 已包含 SukiSU“隐藏 SELinux 修改”的 Linux 4.19 回移植。该功能是可选
-开关：默认不会自动开启，也不会把 SELinux 切换为 Permissive。它让应用
+开关：默认编译进内核，但不会自动启用，也不会把 SELinux 切换为 Permissive。它让应用
 UID（≥10000）读取 `/sys/fs/selinux` 的 policy/status 时看到的是 KSU 规则注入
 前的干净策略，系统进程与 root 仍使用实时策略。
 
 该功能已在开发机（OnePlus 8T / LineageOS 23.2）上完成真机复验：三轮以上
-冷启动、应用正常启动、无崩溃循环、开关往返正常、pstore 为空。它仍属于
-实验性能力，不保证对所有检测方式生效；实现边界、构建标识和验证记录见
+冷启动、应用正常启动、无崩溃循环、开关往返正常、pstore 为空。实现边界、
+构建标识和验证记录见
 [`docs/SELINUX-HIDE-EXPERIMENT.md`](docs/SELINUX-HIDE-EXPERIMENT.md)。
 
-构建时选择 **EXPERIMENTAL kebab SELinux hide (Linux 4.19)** 工作流即可生成
-包含该功能的镜像；`SUSFS` 分支或主工作流 `extended-full` 产物不包含该功能。
+不需要该功能时，构建时关闭 **Enable SELinux hide** 选项即可。
 
 ## 云端构建
 
 1. 打开仓库的 [Actions](https://github.com/Chinohana/oneplus-8t-kebab-sukisu-ultra-actions/actions) 页面。
-2. 选择 **Build kebab SukiSU Ultra with SUSFS v2.2**。
+2. 选择 **Build kebab SukiSU Ultra**。
 3. 点击 **Run workflow**。
-4. 保持默认的 `extended-full`，或选择下方的分阶段配置。
+4. 按需选择选项（默认全部开启）：
+   - **Enable SUSFS**：编译 SUSFS v2.2；关闭时产物为纯 SukiSU builtin 内核。
+   - **SUSFS profile**：SUSFS 功能档位（见下表），仅在 Enable SUSFS 开启时生效。
+   - **Enable SELinux hide**：编译“隐藏 SELinux 修改”（Linux 4.19 回移植）。
+   - **Use AnyKernel3**：打包为 AnyKernel3 ZIP；关闭时产物为 raw
+     `Image` / `System.map` / 配置与 provenance。
+   - **Track upstream latest**：构建前解析上游最新提交（见下）。
 5. 构建成功后下载 kernel artifact，并核对其中的 SHA-256 和 provenance。
 
 默认使用固定的上游提交构建，保证同一仓库状态每次产生相同产物。若勾选
@@ -113,6 +118,9 @@ UID（≥10000）读取 `/sys/fs/selinux` 的 policy/status 时看到的是 KSU 
 | `minimal-mount` | `smoke` + SUS Mount | 已真机验证 |
 | `extended-stat` | `minimal-mount` + SUS Kstat | 仅完成编译审计 |
 | `extended-full` | 九项官方 v2.2 功能 | 默认；已安装并启动验证 |
+
+关闭 **Enable SUSFS** 时，`SUSFS profile` 被忽略，产物不含 SUSFS；SUSFS 与
+SELinux hide 可自由组合（四个组合均受 CI 审计）。
 
 每次构建都会重新检查固定源码版本、补丁落点、最终内核配置、符号、编译警告和
 Image 大小。内核、SukiSU、SUSFS、Clang 和 AnyKernel3 都使用固定提交，避免
