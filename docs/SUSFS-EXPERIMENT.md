@@ -6,7 +6,7 @@ non-SUSFS baseline is preserved at `legacy@1bc3fb3`; the historical
 
 ## Fixed inputs
 
-- LineageOS kernel:
+- LineageOS kernel (`lineage-24.0`, currently identical to `lineage-23.2`):
   `4238ee49a84bd418c8515c297563bb29f95ab40b`
 - SukiSU Ultra `builtin`:
   `b1d534bc41941b2c818d7a1a1dac341e4aabfc2d`
