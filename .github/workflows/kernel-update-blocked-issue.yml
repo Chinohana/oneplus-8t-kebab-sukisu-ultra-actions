@@ -1,0 +1,80 @@
+name: Report blocked kernel update
+
+on:
+  workflow_run:
+    workflows: [Kernel candidate]
+    types: [completed]
+
+permissions:
+  actions: read
+  contents: read
+  issues: write
+
+jobs:
+  maintain-issue:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Open, update or close the single blocked-update issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = 'Kernel update blocked: lineage-23.2';
+            const run = context.payload.workflow_run;
+            const { owner, repo } = context.repo;
+            const all = await github.paginate(github.rest.issues.listForRepo, {
+              owner, repo, state: 'all', per_page: 100
+            });
+            const matches = all.filter(i => !i.pull_request && i.title === title);
+            const open = matches.find(i => i.state === 'open');
+
+            if (run.conclusion === 'success') {
+              if (open) {
+                await github.rest.issues.createComment({
+                  owner, repo, issue_number: open.number,
+                  body: `Recovered: [candidate run ${run.id}](${run.html_url}) passed. Closing automatically.`
+                });
+                await github.rest.issues.update({
+                  owner, repo, issue_number: open.number, state: 'closed'
+                });
+              }
+              return;
+            }
+            if (run.conclusion === 'cancelled' || run.conclusion === 'skipped') return;
+
+            const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, {
+              owner, repo, run_id: run.id, filter: 'latest', per_page: 100
+            });
+            const failed = jobs
+              .filter(job => !['success', 'skipped'].includes(job.conclusion))
+              .map(job => `- ${job.name}: ${job.conclusion}`)
+              .join('\n') || '- Unknown candidate stage';
+            const body = [
+              'The automatic LineageOS 23.2 kernel candidate could not finish.',
+              '',
+              `Run: [${run.name} #${run.run_number}](${run.html_url})`,
+              `Head commit: \`${run.head_sha}\``,
+              '',
+              'Failed stage(s):',
+              failed,
+              '',
+              'No kernel was merged, installed or flashed. Fix the candidate PR, then rerun its checks.'
+            ].join('\n');
+
+            if (open) {
+              await github.rest.issues.update({
+                owner, repo, issue_number: open.number, body
+              });
+              await github.rest.issues.createComment({
+                owner, repo, issue_number: open.number,
+                body: `Still blocked by [candidate run ${run.id}](${run.html_url}).`
+              });
+            } else {
+              const issue = matches[0];
+              if (issue) {
+                await github.rest.issues.update({
+                  owner, repo, issue_number: issue.number, state: 'open', body
+                });
+              } else {
+                await github.rest.issues.create({ owner, repo, title, body });
+              }
+            }
