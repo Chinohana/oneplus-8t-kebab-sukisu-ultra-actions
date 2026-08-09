@@ -4,6 +4,31 @@ on:
   push:
     branches:
       - main
+  workflow_call:
+    inputs:
+      enable_susfs:
+        required: true
+        type: boolean
+      susfs_profile:
+        required: true
+        type: string
+      enable_selinux_hide:
+        required: true
+        type: boolean
+      use_anykernel:
+        required: true
+        type: boolean
+      use_ccache:
+        required: true
+        type: boolean
+      build_channel:
+        required: false
+        type: string
+        default: candidate
+      base_kernel_commit:
+        required: false
+        type: string
+        default: ""
   workflow_dispatch:
     inputs:
       enable_susfs:
@@ -31,11 +56,6 @@ on:
         required: true
         type: boolean
         default: true
-      track_upstream:
-        description: Resolve the latest lineage-24.0 kernel and SukiSU builtin commits before building (fails early if the pinned patches no longer apply)
-        required: false
-        type: boolean
-        default: false
       use_ccache:
         description: "Cache compiler output with ccache (off: previous non-cached build path)"
         required: false
@@ -46,61 +66,26 @@ permissions:
   contents: read
 
 concurrency:
-  group: kebab-ultra-${{ github.ref }}-${{ inputs.enable_susfs || true }}-${{ inputs.susfs_profile || 'extended-full' }}-${{ inputs.enable_selinux_hide || true }}-${{ inputs.use_anykernel || true }}
+  group: kebab-ultra-${{ github.ref }}-${{ inputs.enable_susfs }}-${{ inputs.susfs_profile || 'extended-full' }}-${{ inputs.enable_selinux_hide }}-${{ inputs.use_anykernel }}-${{ inputs.build_channel || 'approved' }}
   cancel-in-progress: false
 
 env:
-  BUILDER_BASE_COMMIT: 1bc3fb3e03f313b905851b32e6fff2d14f49e0b7
-  ORIGINAL_WORKFLOW_SHA256: cd654904e8bf96032c1990ada83125894ece23daf41cdba7da514fd17d6afe31
-  CANONICAL_BRANCH: main
-
-  KERNEL_REPOSITORY: https://github.com/LineageOS/android_kernel_oneplus_sm8250.git
-  KERNEL_BRANCH: lineage-24.0
-  KERNEL_COMMIT: 4238ee49a84bd418c8515c297563bb29f95ab40b
-  KERNEL_DEFCONFIG: vendor/kona-perf_defconfig
-  OPLUS_CONFIG: vendor/oplus.config
-
-  SUKISU_REPOSITORY: https://github.com/SukiSU-Ultra/SukiSU-Ultra
-  SUKISU_BRANCH: builtin
-  SUKISU_COMMIT: b1d534bc41941b2c818d7a1a1dac341e4aabfc2d
-  SUKISU_DRIVER_VERSION: "40856"
-
-  SUSFS_REPOSITORY: https://gitlab.com/simonpunk/susfs4ksu.git
-  SUSFS_COMMIT: 8eade9cd4aed3efddc9ff30b2e48d2d9667ad77d
-  SUSFS_VERSION: v2.2.0
-  SM8250_REFERENCE_REPOSITORY: https://github.com/wagamy/android_kernel_oneplus_sm8250.git
-  SM8250_REFERENCE_COMMIT: ac5f7e57d3f1d4ed065940960d7348c8baae3fb9
-
-  CLANG_REVISION: clang-r563880
-  CLANG_ARCHIVE_COMMIT: 6f88d37dd82ba741ca279539d44bb7da27ab1844
-  ANYKERNEL_REPOSITORY: https://github.com/osm0sis/AnyKernel3.git
-  ANYKERNEL_COMMIT: 1c9a500dd4aa8081952523126e97eb155aed941b
-  ANDROID_NDK_VERSION: 27.2.12479018
-
-  SUSFS_PATCH: patches/manual-hooks-susfs-v2.2-sm8250-4.19.patch
-  SUKISU_COMPAT_PATCH: patches/sukisu-builtin-b1-linux-4.19.patch
-  BASELINE_HOOK_PATCH: patches/sukisu-builtin-manual-hooks-sm8250-4.19.patch
-  SELINUX_HIDE_SUKISU_PATCH: patches/selinux-hide-sukisu-b1-linux-4.19.patch
-  SELINUX_HIDE_KERNEL_PATCH: patches/selinux-hide-kernel-4.19.patch
-  MAX_IMAGE_GROWTH_BYTES: "8388608"
-  MAX_IMAGE_GROWTH_PERCENT: "12"
-  MINIMAL_MOUNT_RUNTIME_APPROVED_COMMIT: 73c1484584a40dd41a9ccc2d0593d47de5b66dc6
-  TRACK_UPSTREAM: ${{ inputs.track_upstream || false }}
-  ENABLE_SUSFS: ${{ inputs.enable_susfs || true }}
+  ENABLE_SUSFS: ${{ github.event_name == 'push' || inputs.enable_susfs }}
   SUSFS_PROFILE: ${{ inputs.susfs_profile || 'extended-full' }}
-  ENABLE_SELINUX_HIDE: ${{ inputs.enable_selinux_hide || true }}
-  USE_ANYKERNEL: ${{ inputs.use_anykernel || true }}
-  USE_CCACHE: ${{ inputs.use_ccache || true }}
+  ENABLE_SELINUX_HIDE: ${{ github.event_name == 'push' || inputs.enable_selinux_hide }}
+  USE_ANYKERNEL: ${{ github.event_name == 'push' || inputs.use_anykernel }}
+  USE_CCACHE: ${{ github.event_name == 'push' || inputs.use_ccache }}
+  BUILD_CHANNEL: ${{ inputs.build_channel || 'approved' }}
+  BASE_KERNEL_COMMIT: ${{ inputs.base_kernel_commit || '' }}
 
 jobs:
   audit-build:
     name: kebab SM8250 4.19
-    if: github.ref == 'refs/heads/main'
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 360
     env:
       PROFILE: ${{ inputs.susfs_profile || 'extended-full' }}
-      SUSFS_SMOKE_APPROVED_COMMIT: ${{ vars.SUSFS_SMOKE_APPROVED_COMMIT }}
 
     steps:
       - name: Check out canonical SUSFS builder
@@ -108,31 +93,24 @@ jobs:
         with:
           fetch-depth: 1
 
+      - name: Load immutable pins and resolve the LineageOS 23.2 kernel
+        shell: bash
+        run: |
+          set -euo pipefail
+          source .github/scripts/load-build-pins.sh "$GITHUB_WORKSPACE"
+          bash .github/scripts/resolve-kernel-pin.sh "$GITHUB_WORKSPACE"
+          test "$KERNEL_BRANCH" = lineage-23.2
+
       - name: Enforce branch and immutable legacy baseline
         shell: bash
         run: |
           set -euo pipefail
 
-          if test "$TRACK_UPSTREAM" = "true"; then
-            tracked_kernel_commit="$(
-              git ls-remote "$KERNEL_REPOSITORY" \
-                "refs/heads/$KERNEL_BRANCH" | awk '{print $1}'
-            )"
-            tracked_sukisu_commit="$(
-              git ls-remote "$SUKISU_REPOSITORY" \
-                "refs/heads/$SUKISU_BRANCH" | awk '{print $1}'
-            )"
-            test -n "$tracked_kernel_commit"
-            test -n "$tracked_sukisu_commit"
-            echo "KERNEL_COMMIT=$tracked_kernel_commit" >> "$GITHUB_ENV"
-            echo "SUKISU_COMMIT=$tracked_sukisu_commit" >> "$GITHUB_ENV"
-            echo "TRACKED_KERNEL_COMMIT=$tracked_kernel_commit" \
-              >> "$GITHUB_ENV"
-            echo "TRACKED_SUKISU_COMMIT=$tracked_sukisu_commit" \
-              >> "$GITHUB_ENV"
+          if test "$BUILD_CHANNEL" = approved; then
+            test "$GITHUB_REF" = "refs/heads/$CANONICAL_BRANCH"
+          else
+            test "$BUILD_CHANNEL" = candidate
           fi
-
-          test "$GITHUB_REF" = "refs/heads/$CANONICAL_BRANCH"
           if test "$ENABLE_SUSFS" = "true"; then
             case "$PROFILE" in
               smoke|minimal-mount|extended-stat|extended-full) ;;
@@ -161,36 +139,16 @@ jobs:
             test -s "$SELINUX_HIDE_KERNEL_PATCH"
           fi
 
-          if test "$ENABLE_SUSFS" = "true"; then
-            if test "$PROFILE" = minimal-mount; then
-              if test -z "$SUSFS_SMOKE_APPROVED_COMMIT" ||
-                 test "$SUSFS_SMOKE_APPROVED_COMMIT" != "$GITHUB_SHA"; then
-                echo "::error::minimal-mount is blocked until the smoke runtime gate approves this exact commit."
-                echo "::error::Set repository variable SUSFS_SMOKE_APPROVED_COMMIT=$GITHUB_SHA only after controlled smoke validation."
-                exit 1
-              fi
-            fi
-
-            if test "$PROFILE" = extended-stat ||
-               test "$PROFILE" = extended-full; then
-              git fetch --no-tags --depth=1 origin \
-                "$MINIMAL_MOUNT_RUNTIME_APPROVED_COMMIT"
-              for file in \
-                "$SUSFS_PATCH" \
-                "$SUKISU_COMPAT_PATCH" \
-                "$BASELINE_HOOK_PATCH"; do
-                approved_blob="$(
-                  git rev-parse \
-                    "${MINIMAL_MOUNT_RUNTIME_APPROVED_COMMIT}:${file}"
-                )"
-                current_blob="$(git hash-object "$file")"
-                if test "$approved_blob" != "$current_blob"; then
-                  echo "::error file=$file::Runtime-approved patch changed after minimal-mount validation."
-                  exit 1
-                fi
-              done
-            fi
-          fi
+      - name: Compute the exact build fingerprint
+        shell: bash
+        run: |
+          set -euo pipefail
+          fingerprint="$(
+            bash .github/scripts/compute-build-fingerprint.sh \
+              "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE/audit"
+          )"
+          echo "BUILD_FINGERPRINT=$fingerprint" >> "$GITHUB_ENV"
+          echo "Build fingerprint: $fingerprint"
 
       - name: Check runner storage
         shell: bash
@@ -277,12 +235,10 @@ jobs:
           test "$(
             git -C sm8250_reference rev-parse HEAD
           )" = "$SM8250_REFERENCE_COMMIT"
-          if test "$TRACK_UPSTREAM" != "true"; then
-            test "$(
-              git -C sm8250_reference rev-parse \
-                "${SM8250_REFERENCE_COMMIT}^"
-            )" = "$KERNEL_COMMIT"
-          fi
+          test "$(
+            git -C sm8250_reference rev-parse \
+              "${SM8250_REFERENCE_COMMIT}^"
+          )" = "$SM8250_REFERENCE_BASE_COMMIT"
 
       - name: Preflight exact patch file allowlists
         shell: bash
@@ -412,8 +368,8 @@ jobs:
 
           git init kernel_common
           git -C kernel_common remote add origin "$KERNEL_REPOSITORY"
-          git -C kernel_common fetch --no-tags --depth=256 \
-            origin "refs/heads/$KERNEL_BRANCH"
+          git -C kernel_common fetch --no-tags --depth=1 \
+            origin "$KERNEL_COMMIT"
           git -C kernel_common checkout --detach "$KERNEL_COMMIT"
           test "$(git -C kernel_common rev-parse HEAD)" = "$KERNEL_COMMIT"
 
@@ -427,9 +383,6 @@ jobs:
             | bash -s "$SUKISU_COMMIT"
           test -d KernelSU
           test "$(git -C KernelSU rev-parse HEAD)" = "$SUKISU_COMMIT"
-          test "$(
-            git -C KernelSU rev-parse "origin/$SUKISU_BRANCH"
-          )" = "$SUKISU_COMMIT"
           test "$(
             git -C KernelSU remote get-url origin
           )" = "$SUKISU_REPOSITORY"
@@ -462,7 +415,6 @@ jobs:
             | bash -s "$SUKISU_COMMIT"
           test -d KernelSU
           test "$(git -C KernelSU rev-parse HEAD)" = "$SUKISU_COMMIT"
-          test "$(git -C KernelSU rev-parse "origin/$SUKISU_BRANCH")" = "$SUKISU_COMMIT"
           test "$(git -C KernelSU remote get-url origin)" = "$SUKISU_REPOSITORY"
           git -C KernelSU apply --check --whitespace=error-all \
             "$GITHUB_WORKSPACE/$SUKISU_COMPAT_PATCH"
@@ -510,6 +462,12 @@ jobs:
               "$GITHUB_WORKSPACE/$SUSFS_PATCH"
             git -C kernel_experiment add -N \
               fs/susfs.c include/linux/susfs.h include/linux/susfs_def.h
+          else
+            git -C kernel_experiment apply --check \
+              --whitespace=error-all \
+              "$GITHUB_WORKSPACE/$BASELINE_HOOK_PATCH"
+            git -C kernel_experiment apply --whitespace=error-all \
+              "$GITHUB_WORKSPACE/$BASELINE_HOOK_PATCH"
           fi
           if test "$ENABLE_SELINUX_HIDE" = "true"; then
             git -C kernel_experiment apply --check \
@@ -526,7 +484,7 @@ jobs:
           if test "$ENABLE_SUSFS" = "true"; then
             expected_files="$RUNNER_TEMP/susfs-kernel-files.expected"
           else
-            expected_files="/dev/null"
+            expected_files="$RUNNER_TEMP/baseline-hook-files.expected"
           fi
           if test "$ENABLE_SELINUX_HIDE" = "true"; then
             expected_files="$expected_files $RUNNER_TEMP/selinux-hide-kernel-files.expected"
@@ -1531,7 +1489,7 @@ jobs:
           if test "$ENABLE_SUSFS" = "true"; then
             expected_files="$RUNNER_TEMP/susfs-kernel-files.expected"
           else
-            expected_files="/dev/null"
+            expected_files="$RUNNER_TEMP/baseline-hook-files.expected"
           fi
           if test "$ENABLE_SELINUX_HIDE" = "true"; then
             expected_files="$expected_files $RUNNER_TEMP/selinux-hide-kernel-files.expected"
@@ -1619,7 +1577,7 @@ jobs:
           cp "$ndk_root/source.properties" \
             artifacts/tool/ndk-source.properties
 
-          tool_artifact_name="TESTING_ksu_susfs-tool_v2.2.0_SF-${SUSFS_COMMIT:0:12}_NDK-${ANDROID_NDK_VERSION}_WF-${GITHUB_SHA:0:12}"
+          tool_artifact_name="${BUILD_CHANNEL^^}_ksu_susfs-tool_v2.2.0_${PROFILE}_HIDE-${ENABLE_SELINUX_HIDE}_SF-${SUSFS_COMMIT:0:12}_NDK-${ANDROID_NDK_VERSION}_WF-${GITHUB_SHA:0:12}"
           echo "TOOL_ARTIFACT_NAME=$tool_artifact_name" \
             >> "$GITHUB_ENV"
 
@@ -1654,7 +1612,7 @@ jobs:
             string_feature="${string_feature} SELinux hide"
           fi
           sed -i \
-            "s/^kernel.string=.*/kernel.string=TESTING SukiSU Ultra kebab ${string_feature} KSU${SUKISU_DRIVER_VERSION}/" \
+            "s/^kernel.string=.*/kernel.string=${BUILD_CHANNEL^^} SukiSU Ultra kebab ${string_feature} KSU${SUKISU_DRIVER_VERSION}/" \
             AnyKernel3/anykernel.sh
           sed -i 's/^do.devicecheck=.*/do.devicecheck=1/' \
             AnyKernel3/anykernel.sh
@@ -1681,7 +1639,7 @@ jobs:
           sed -i 's/^write_boot;.*/flash_boot;/' AnyKernel3/anykernel.sh
 
           grep -Fqx \
-            "kernel.string=TESTING SukiSU Ultra kebab ${string_feature} KSU${SUKISU_DRIVER_VERSION}" \
+            "kernel.string=${BUILD_CHANNEL^^} SukiSU Ultra kebab ${string_feature} KSU${SUKISU_DRIVER_VERSION}" \
             AnyKernel3/anykernel.sh
           grep -q '^device.name1=OnePlus8T$' AnyKernel3/anykernel.sh
           grep -q '^device.name2=KB2000$' AnyKernel3/anykernel.sh
@@ -1707,7 +1665,7 @@ jobs:
           fi
 
           rm -f AnyKernel3/README.md
-          package_name="SukiSU_kebab_${feature_tags}_K${KERNEL_COMMIT:0:7}_SU${SUKISU_COMMIT:0:7}_KSU${SUKISU_DRIVER_VERSION}"
+          package_name="${BUILD_CHANNEL^^}_SukiSU_kebab_${feature_tags}_K${KERNEL_COMMIT:0:7}_SU${SUKISU_COMMIT:0:7}_KSU${SUKISU_DRIVER_VERSION}"
           (
             cd AnyKernel3
             zip -r9 "../${package_name}.zip" . \
@@ -1738,7 +1696,7 @@ jobs:
             string_feature="${string_feature} SELinux hide"
           fi
 
-          package_name="RAW_SukiSU_kebab_${feature_tags}_K${KERNEL_COMMIT:0:7}_SU${SUKISU_COMMIT:0:7}_KSU${SUKISU_DRIVER_VERSION}"
+          package_name="${BUILD_CHANNEL^^}_RAW_SukiSU_kebab_${feature_tags}_K${KERNEL_COMMIT:0:7}_SU${SUKISU_COMMIT:0:7}_KSU${SUKISU_DRIVER_VERSION}"
           echo "PACKAGE_NAME=$package_name" >> "$GITHUB_ENV"
           echo "KERNEL_ARTIFACT_NAME=$package_name" >> "$GITHUB_ENV"
 
@@ -1768,8 +1726,29 @@ jobs:
             "kernel_experiment/$SELECTED_OUT/arch/arm64/boot/Image" \
             > artifacts/kernel/selected-build-files.sha256
 
+          if test "$KERNEL_COMMIT" = "$SM8250_REFERENCE_BASE_COMMIT" &&
+             test "$ENABLE_SUSFS" = true &&
+             test "$PROFILE" = extended-full &&
+             test "$ENABLE_SELINUX_HIDE" = true; then
+            {
+              sha256sum artifacts/kernel/selected.config |
+                awk '{print $1 "  selected.config"}'
+              sha256sum artifacts/kernel/selected.System.map |
+                awk '{print $1 "  selected.System.map"}'
+              sha256sum \
+                "kernel_experiment/$SELECTED_OUT/arch/arm64/boot/Image" |
+                awk '{print $1 "  Image"}'
+            } > "$RUNNER_TEMP/migration-current.sha256"
+            grep -v '^#' config/migration-baseline-lineage-23.2.sha256 \
+              > "$RUNNER_TEMP/migration-approved.sha256"
+            diff -u "$RUNNER_TEMP/migration-approved.sha256" \
+              "$RUNNER_TEMP/migration-current.sha256"
+            cp "$RUNNER_TEMP/migration-current.sha256" \
+              artifacts/kernel/audit/migration-equivalence.sha256
+          fi
+
           {
-            echo "status=TESTING_ONLY_SEE_README_FOR_PROFILE_RUNTIME_SCOPE"
+            echo "status=${BUILD_CHANNEL^^}_DO_NOT_AUTO_INSTALL"
             echo "device=kebab"
             echo "model=OnePlus 8T"
             echo "rom=LineageOS 23.2"
@@ -1781,9 +1760,9 @@ jobs:
             echo "enable_susfs=$ENABLE_SUSFS"
             echo "enable_selinux_hide=$ENABLE_SELINUX_HIDE"
             echo "use_anykernel=$USE_ANYKERNEL"
-            echo "track_upstream=$TRACK_UPSTREAM"
-            echo "tracked_kernel_commit=${TRACKED_KERNEL_COMMIT:-}"
-            echo "tracked_sukisu_commit=${TRACKED_SUKISU_COMMIT:-}"
+            echo "build_channel=$BUILD_CHANNEL"
+            echo "build_fingerprint=$BUILD_FINGERPRINT"
+            echo "base_kernel_commit=$BASE_KERNEL_COMMIT"
             echo "builder_commit=$GITHUB_SHA"
             echo "builder_base_commit=$BUILDER_BASE_COMMIT"
             echo "github_run_id=$GITHUB_RUN_ID"
@@ -1838,7 +1817,7 @@ jobs:
 
           if test "$ENABLE_SUSFS" = "true"; then
             {
-              echo "status=TEST_ATTACHMENT_DO_NOT_AUTO_INSTALL"
+              echo "status=${BUILD_CHANNEL^^}_TEST_ATTACHMENT_DO_NOT_AUTO_INSTALL"
               echo "source_repository=$SUSFS_REPOSITORY"
               echo "source_commit=$SUSFS_COMMIT"
               echo "susfs_version=$SUSFS_VERSION"
@@ -1862,7 +1841,7 @@ jobs:
           name: ${{ env.KERNEL_ARTIFACT_NAME }}
           path: artifacts/kernel
           if-no-files-found: error
-          retention-days: 7
+          retention-days: ${{ inputs.build_channel == 'candidate' && 30 || 7 }}
 
       - name: Upload pinned v2.2 userspace test tool
         if: ${{ env.ENABLE_SUSFS == 'true' }}
@@ -1871,4 +1850,4 @@ jobs:
           name: ${{ env.TOOL_ARTIFACT_NAME }}
           path: artifacts/tool
           if-no-files-found: error
-          retention-days: 7
+          retention-days: ${{ inputs.build_channel == 'candidate' && 30 || 7 }}

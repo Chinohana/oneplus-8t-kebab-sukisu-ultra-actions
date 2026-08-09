@@ -1,0 +1,18 @@
+version: 2
+
+updates:
+  - package-ecosystem: gitsubmodule
+    directory: /
+    schedule:
+      interval: cron
+      cronjob: "17 3 * * *"
+      timezone: Asia/Shanghai
+    cooldown:
+      default-days: 0
+    open-pull-requests-limit: 1
+    labels:
+      - kernel-update
+      - security
+    commit-message:
+      prefix: "kernel"
+      include: scope
