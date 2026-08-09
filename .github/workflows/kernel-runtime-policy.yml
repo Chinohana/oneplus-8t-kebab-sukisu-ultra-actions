@@ -42,19 +42,6 @@ jobs:
           )
 
           if test "$requires_phone_test" = true; then
-            base_pin="$(
-              git ls-tree "${{ github.event.pull_request.base.sha }}" -- \
-                pins/kernel-lineage-23.2
-            )"
-            current_pin="$(
-              git ls-tree HEAD -- pins/kernel-lineage-23.2 | awk '{print $3}'
-            )"
-            if test -z "$base_pin" &&
-               test "$current_pin" = 4238ee49a84bd418c8515c297563bb29f95ab40b; then
-              echo "Initial safety-flow migration: kernel-candidate-gate will require exact Image/config/System.map equivalence."
-              exit 0
-            fi
-
             gh api \
               "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments?per_page=100" \
               > "$RUNNER_TEMP/comments.json"
