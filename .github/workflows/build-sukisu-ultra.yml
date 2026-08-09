@@ -214,8 +214,31 @@ jobs:
             bash .github/scripts/compute-build-fingerprint.sh \
               "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE/audit"
           )"
-          echo "BUILD_FINGERPRINT=$fingerprint" >> "$GITHUB_ENV"
+          ccache_source_fingerprint="$(
+            {
+              echo 'ccache_schema=3'
+              echo "kernel_commit=$KERNEL_COMMIT"
+              echo "sukisu_commit=$SUKISU_COMMIT"
+              echo "susfs_commit=$SUSFS_COMMIT"
+              echo "sm8250_reference_commit=$SM8250_REFERENCE_COMMIT"
+              echo "clang_revision=$CLANG_REVISION"
+              echo "clang_archive_commit=$CLANG_ARCHIVE_COMMIT"
+              echo "sukisu_driver_version=$SUKISU_DRIVER_VERSION"
+              cat audit/build-input-files.sha256
+            } | sha256sum | awk '{print $1}'
+          )"
+          if test "$ENABLE_SELINUX_HIDE" = "true"; then
+            ccache_hide_tag=hide
+          else
+            ccache_hide_tag=plain
+          fi
+          {
+            echo "BUILD_FINGERPRINT=$fingerprint"
+            echo "CCACHE_SOURCE_FINGERPRINT=$ccache_source_fingerprint"
+            echo "CCACHE_HIDE_TAG=$ccache_hide_tag"
+          } >> "$GITHUB_ENV"
           echo "Build fingerprint: $fingerprint"
+          echo "ccache source fingerprint: $ccache_source_fingerprint"
 
       - name: Check runner storage
         shell: bash
@@ -1033,15 +1056,118 @@ jobs:
               > audit/config-baseline-to-selected.diff
           fi
 
-      - name: Restore ccache
-        id: cache-ccache
+      - name: Restore baseline ccache
+        id: cache-ccache-baseline
         if: ${{ env.USE_CCACHE == 'true' }}
         uses: actions/cache/restore@v4
         with:
-          path: .ccache
-          key: ccache-kebab-${{ hashFiles('patches/*', '.github/workflows/build-sukisu-ultra.yml') }}-${{ env.KERNEL_COMMIT }}-${{ env.SUKISU_COMMIT }}-${{ env.SUKISU_DRIVER_VERSION }}
+          path: .ccache/baseline
+          key: ccache-kebab-v3-${{ env.CLANG_REVISION }}-baseline-${{ env.CCACHE_SOURCE_FINGERPRINT }}
           restore-keys: |
-            ccache-kebab-
+            ccache-kebab-v3-${{ env.CLANG_REVISION }}-baseline-
+
+      - name: Restore selected ccache
+        id: cache-ccache-selected
+        if: ${{ env.USE_CCACHE == 'true' && env.ENABLE_SUSFS != 'true' }}
+        uses: actions/cache/restore@v4
+        with:
+          path: .ccache/selected-${{ env.CCACHE_HIDE_TAG }}
+          key: ccache-kebab-v3-${{ env.CLANG_REVISION }}-selected-${{ env.CCACHE_HIDE_TAG }}-${{ env.CCACHE_SOURCE_FINGERPRINT }}
+          restore-keys: |
+            ccache-kebab-v3-${{ env.CLANG_REVISION }}-selected-${{ env.CCACHE_HIDE_TAG }}-
+
+      - name: Restore smoke ccache
+        id: cache-ccache-smoke
+        if: ${{ env.USE_CCACHE == 'true' && env.ENABLE_SUSFS == 'true' }}
+        uses: actions/cache/restore@v4
+        with:
+          path: .ccache/smoke-${{ env.CCACHE_HIDE_TAG }}
+          key: ccache-kebab-v3-${{ env.CLANG_REVISION }}-smoke-${{ env.CCACHE_HIDE_TAG }}-${{ env.CCACHE_SOURCE_FINGERPRINT }}
+          restore-keys: |
+            ccache-kebab-v3-${{ env.CLANG_REVISION }}-smoke-${{ env.CCACHE_HIDE_TAG }}-
+
+      - name: Restore minimal-mount ccache
+        id: cache-ccache-minimal
+        if: ${{ env.USE_CCACHE == 'true' && env.ENABLE_SUSFS == 'true' && env.PROFILE != 'smoke' }}
+        uses: actions/cache/restore@v4
+        with:
+          path: .ccache/minimal-mount-${{ env.CCACHE_HIDE_TAG }}
+          key: ccache-kebab-v3-${{ env.CLANG_REVISION }}-minimal-mount-${{ env.CCACHE_HIDE_TAG }}-${{ env.CCACHE_SOURCE_FINGERPRINT }}
+          restore-keys: |
+            ccache-kebab-v3-${{ env.CLANG_REVISION }}-minimal-mount-${{ env.CCACHE_HIDE_TAG }}-
+
+      - name: Restore extended-stat ccache
+        id: cache-ccache-extended-stat
+        if: ${{ env.USE_CCACHE == 'true' && env.ENABLE_SUSFS == 'true' && env.PROFILE == 'extended-stat' }}
+        uses: actions/cache/restore@v4
+        with:
+          path: .ccache/extended-stat-${{ env.CCACHE_HIDE_TAG }}
+          key: ccache-kebab-v3-${{ env.CLANG_REVISION }}-extended-stat-${{ env.CCACHE_HIDE_TAG }}-${{ env.CCACHE_SOURCE_FINGERPRINT }}
+          restore-keys: |
+            ccache-kebab-v3-${{ env.CLANG_REVISION }}-extended-stat-${{ env.CCACHE_HIDE_TAG }}-
+
+      - name: Restore extended-full ccache
+        id: cache-ccache-extended-full
+        if: ${{ env.USE_CCACHE == 'true' && env.ENABLE_SUSFS == 'true' && env.PROFILE == 'extended-full' }}
+        uses: actions/cache/restore@v4
+        with:
+          path: .ccache/extended-full-${{ env.CCACHE_HIDE_TAG }}
+          key: ccache-kebab-v3-${{ env.CLANG_REVISION }}-extended-full-${{ env.CCACHE_HIDE_TAG }}-${{ env.CCACHE_SOURCE_FINGERPRINT }}
+          restore-keys: |
+            ccache-kebab-v3-${{ env.CLANG_REVISION }}-extended-full-${{ env.CCACHE_HIDE_TAG }}-
+
+      - name: Configure stage-scoped ccache
+        if: ${{ env.USE_CCACHE == 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          stages=(baseline)
+          if test "$ENABLE_SUSFS" = "true"; then
+            stages+=("smoke-$CCACHE_HIDE_TAG")
+            if test "$PROFILE" != smoke; then
+              stages+=("minimal-mount-$CCACHE_HIDE_TAG")
+            fi
+            if test "$PROFILE" = extended-stat; then
+              stages+=("extended-stat-$CCACHE_HIDE_TAG")
+            fi
+            if test "$PROFILE" = extended-full; then
+              stages+=("extended-full-$CCACHE_HIDE_TAG")
+            fi
+          else
+            stages+=("selected-$CCACHE_HIDE_TAG")
+          fi
+
+          mkdir -p audit
+          printf '%s\n' "${stages[@]}" > audit/ccache-stages.txt
+          for stage in "${stages[@]}"; do
+            cache_dir="$GITHUB_WORKSPACE/.ccache/$stage"
+            mkdir -p "$cache_dir"
+            CCACHE_DIR="$cache_dir" ccache --set-config=max_size=800M
+            CCACHE_DIR="$cache_dir" ccache --set-config=compression=true
+            CCACHE_DIR="$cache_dir" ccache --zero-stats
+          done
+
+      - name: Record ccache restore provenance
+        if: ${{ env.USE_CCACHE == 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "schema=ccache-v3"
+            echo "source_fingerprint=$CCACHE_SOURCE_FINGERPRINT"
+            echo "baseline_hit=${{ steps.cache-ccache-baseline.outputs.cache-hit }}"
+            echo "baseline_matched_key=${{ steps.cache-ccache-baseline.outputs.cache-matched-key }}"
+            echo "selected_hit=${{ steps.cache-ccache-selected.outputs.cache-hit }}"
+            echo "selected_matched_key=${{ steps.cache-ccache-selected.outputs.cache-matched-key }}"
+            echo "smoke_hit=${{ steps.cache-ccache-smoke.outputs.cache-hit }}"
+            echo "smoke_matched_key=${{ steps.cache-ccache-smoke.outputs.cache-matched-key }}"
+            echo "minimal_hit=${{ steps.cache-ccache-minimal.outputs.cache-hit }}"
+            echo "minimal_matched_key=${{ steps.cache-ccache-minimal.outputs.cache-matched-key }}"
+            echo "extended_stat_hit=${{ steps.cache-ccache-extended-stat.outputs.cache-hit }}"
+            echo "extended_stat_matched_key=${{ steps.cache-ccache-extended-stat.outputs.cache-matched-key }}"
+            echo "extended_full_hit=${{ steps.cache-ccache-extended-full.outputs.cache-hit }}"
+            echo "extended_full_matched_key=${{ steps.cache-ccache-extended-full.outputs.cache-matched-key }}"
+          } > audit/ccache-restore.txt
 
       - name: Build baseline, smoke, and selected profile
         shell: bash
@@ -1055,20 +1181,16 @@ jobs:
           )"
           export KBUILD_BUILD_TIMESTAMP="@$SOURCE_DATE_EPOCH"
           export KBUILD_BUILD_VERSION=1
-          if test "$USE_CCACHE" = "true"; then
-            export CCACHE_DIR="$GITHUB_WORKSPACE/.ccache"
-            export CCACHE_MAXSIZE=8G
-            export CCACHE_COMPRESS=1
-          fi
-
           build_kernel() {
             local tree="$1"
             local out="$2"
             local log="$3"
+            local ccache_stage="$4"
 
             cd "$GITHUB_WORKSPACE/$tree"
             set +e
             if test "$USE_CCACHE" = "true"; then
+              CCACHE_DIR="$GITHUB_WORKSPACE/.ccache/$ccache_stage" \
               make -j"$(nproc --all)" O="$out" ARCH=arm64 \
                 LLVM=1 LLVM_IAS=1 \
                 CC="ccache clang" \
@@ -1092,27 +1214,30 @@ jobs:
           }
 
           build_kernel kernel_baseline out-baseline \
-            audit/build-baseline.log
+            audit/build-baseline.log baseline
           if test "$ENABLE_SUSFS" = "true"; then
             build_kernel kernel_experiment out-smoke \
-              audit/build-smoke.log
+              audit/build-smoke.log "smoke-$CCACHE_HIDE_TAG"
             if test "$PROFILE" = minimal-mount ||
                test "$PROFILE" = extended-stat ||
                test "$PROFILE" = extended-full; then
               build_kernel kernel_experiment out-minimal-mount \
-                audit/build-minimal-mount.log
+                audit/build-minimal-mount.log \
+                "minimal-mount-$CCACHE_HIDE_TAG"
             fi
             if test "$PROFILE" = extended-stat; then
               build_kernel kernel_experiment out-extended-stat \
-                audit/build-extended-stat.log
+                audit/build-extended-stat.log \
+                "extended-stat-$CCACHE_HIDE_TAG"
             fi
             if test "$PROFILE" = extended-full; then
               build_kernel kernel_experiment out-extended-full \
-                audit/build-extended-full.log
+                audit/build-extended-full.log \
+                "extended-full-$CCACHE_HIDE_TAG"
             fi
           else
             build_kernel kernel_experiment out-selected \
-              audit/build-selected.log
+              audit/build-selected.log "selected-$CCACHE_HIDE_TAG"
           fi
 
       - name: Record ccache statistics
@@ -1120,16 +1245,69 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          export CCACHE_DIR="$GITHUB_WORKSPACE/.ccache"
           mkdir -p audit
-          ccache -s | tee audit/ccache-stats.txt
+          {
+            echo "## ccache stage statistics"
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
+          while IFS= read -r stage; do
+            stats_file="audit/ccache-stats-$stage.txt"
+            CCACHE_DIR="$GITHUB_WORKSPACE/.ccache/$stage" \
+              ccache --show-stats --verbose | tee "$stats_file"
+            {
+              echo "### $stage"
+              echo '```text'
+              cat "$stats_file"
+              echo '```'
+              echo
+            } >> "$GITHUB_STEP_SUMMARY"
+          done < audit/ccache-stages.txt
 
-      - name: Save ccache
-        if: ${{ env.USE_CCACHE == 'true' && steps.cache-ccache.outputs.cache-hit != 'true' }}
+      - name: Save baseline ccache
+        if: >-
+          ${{ env.USE_CCACHE == 'true' &&
+              steps.cache-ccache-baseline.outputs.cache-hit != 'true' &&
+              (github.event_name != 'pull_request' ||
+               (env.ENABLE_SUSFS != 'true' && env.ENABLE_SELINUX_HIDE != 'true')) }}
         uses: actions/cache/save@v4
         with:
-          path: .ccache
-          key: ccache-kebab-${{ hashFiles('patches/*', '.github/workflows/build-sukisu-ultra.yml') }}-${{ env.KERNEL_COMMIT }}-${{ env.SUKISU_COMMIT }}-${{ env.SUKISU_DRIVER_VERSION }}
+          path: .ccache/baseline
+          key: ${{ steps.cache-ccache-baseline.outputs.cache-primary-key }}
+
+      - name: Save selected ccache
+        if: ${{ env.USE_CCACHE == 'true' && env.ENABLE_SUSFS != 'true' && steps.cache-ccache-selected.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v4
+        with:
+          path: .ccache/selected-${{ env.CCACHE_HIDE_TAG }}
+          key: ${{ steps.cache-ccache-selected.outputs.cache-primary-key }}
+
+      - name: Save smoke ccache
+        if: ${{ env.USE_CCACHE == 'true' && env.ENABLE_SUSFS == 'true' && steps.cache-ccache-smoke.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v4
+        with:
+          path: .ccache/smoke-${{ env.CCACHE_HIDE_TAG }}
+          key: ${{ steps.cache-ccache-smoke.outputs.cache-primary-key }}
+
+      - name: Save minimal-mount ccache
+        if: ${{ env.USE_CCACHE == 'true' && env.ENABLE_SUSFS == 'true' && env.PROFILE != 'smoke' && steps.cache-ccache-minimal.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v4
+        with:
+          path: .ccache/minimal-mount-${{ env.CCACHE_HIDE_TAG }}
+          key: ${{ steps.cache-ccache-minimal.outputs.cache-primary-key }}
+
+      - name: Save extended-stat ccache
+        if: ${{ env.USE_CCACHE == 'true' && env.ENABLE_SUSFS == 'true' && env.PROFILE == 'extended-stat' && steps.cache-ccache-extended-stat.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v4
+        with:
+          path: .ccache/extended-stat-${{ env.CCACHE_HIDE_TAG }}
+          key: ${{ steps.cache-ccache-extended-stat.outputs.cache-primary-key }}
+
+      - name: Save extended-full ccache
+        if: ${{ env.USE_CCACHE == 'true' && env.ENABLE_SUSFS == 'true' && env.PROFILE == 'extended-full' && steps.cache-ccache-extended-full.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v4
+        with:
+          path: .ccache/extended-full-${{ env.CCACHE_HIDE_TAG }}
+          key: ${{ steps.cache-ccache-extended-full.outputs.cache-primary-key }}
 
       - name: Audit warnings, symbols, configuration, and Image growth
         shell: bash
