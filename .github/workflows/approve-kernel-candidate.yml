@@ -1,0 +1,188 @@
+name: Approve kernel candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Candidate PR number
+        required: true
+        type: string
+      build_fingerprint:
+        description: 64-character build fingerprint from candidate-metadata
+        required: true
+        type: string
+      package_sha256:
+        description: SHA-256 of the tested extended-full + SELinux-hide CANDIDATE ZIP
+        required: true
+        type: string
+      rom_build_fingerprint:
+        description: Current phone ROM build fingerprint (adb shell getprop ro.build.fingerprint)
+        required: true
+        type: string
+
+permissions:
+  actions: write
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  approve:
+    name: Verify exact phone-tested candidate
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require the protected main copy of this workflow
+        shell: bash
+        run: test "$GITHUB_REF" = refs/heads/main
+
+      - name: Check out trusted verifier
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: trusted
+          persist-credentials: false
+
+      - name: Resolve PR, operator permission and successful candidate run
+        id: resolve
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ inputs.pr_number }}
+        run: |
+          set -euo pipefail
+          [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]
+          repo="$GITHUB_REPOSITORY"
+
+          gh api "repos/$repo/pulls/$PR_NUMBER" > "$RUNNER_TEMP/pr.json"
+          test "$(jq -r .state "$RUNNER_TEMP/pr.json")" = open
+          test "$(jq -r .base.ref "$RUNNER_TEMP/pr.json")" = main
+          test "$(jq -r .head.repo.full_name "$RUNNER_TEMP/pr.json")" = "$repo"
+          head_sha="$(jq -r .head.sha "$RUNNER_TEMP/pr.json")"
+          [[ "$head_sha" =~ ^[0-9a-f]{40}$ ]]
+
+          permission="$(
+            gh api "repos/$repo/collaborators/$GITHUB_ACTOR/permission" \
+              --jq .permission
+          )"
+          case "$permission" in
+            admin|maintain|write) ;;
+            *) echo "::error::The operator does not have write permission."; exit 1 ;;
+          esac
+
+          gh api --method GET \
+            "repos/$repo/actions/workflows/kernel-candidate.yml/runs?event=pull_request&per_page=100" \
+            > "$RUNNER_TEMP/runs.json"
+          run_id="$(
+            jq -r \
+              --argjson pr "$PR_NUMBER" \
+              --arg head "$head_sha" \
+              '[.workflow_runs[]
+                | select(.conclusion == "success")
+                | select(.head_sha == $head)
+                | select(any(.pull_requests[]?; .number == $pr))]
+               | sort_by(.run_number) | last | .id // empty' \
+              "$RUNNER_TEMP/runs.json"
+          )"
+          test -n "$run_id"
+
+          gh api --method GET \
+            "repos/$repo/actions/workflows/kernel-runtime-policy.yml/runs?event=pull_request&per_page=100" \
+            > "$RUNNER_TEMP/policy-runs.json"
+          policy_run_id="$(
+            jq -r \
+              --argjson pr "$PR_NUMBER" \
+              --arg head "$head_sha" \
+              '[.workflow_runs[]
+                | select(.head_sha == $head)
+                | select(any(.pull_requests[]?; .number == $pr))]
+               | sort_by(.run_number) | last | .id // empty' \
+              "$RUNNER_TEMP/policy-runs.json"
+          )"
+          test -n "$policy_run_id"
+
+          gh api "repos/$repo/actions/runs/$run_id/artifacts?per_page=100" \
+            > "$RUNNER_TEMP/artifacts.json"
+          artifact_id="$(
+            jq -r \
+              '[.artifacts[]
+                | select(.expired == false)
+                | select(.name | startswith("CANDIDATE_SukiSU_kebab_extended-full-hide_"))]
+               | if length == 1 then .[0].id else empty end' \
+              "$RUNNER_TEMP/artifacts.json"
+          )"
+          test -n "$artifact_id"
+
+          {
+            echo "head_sha=$head_sha"
+            echo "run_id=$run_id"
+            echo "artifact_id=$artifact_id"
+            echo "policy_run_id=$policy_run_id"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Check out the exact PR head as untrusted data
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.resolve.outputs.head_sha }}
+          path: candidate
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Download the exact candidate artifact
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_ID: ${{ steps.resolve.outputs.artifact_id }}
+        run: |
+          set -euo pipefail
+          gh api --method GET \
+            "repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" \
+            > "$RUNNER_TEMP/candidate-artifact.zip"
+          test -s "$RUNNER_TEMP/candidate-artifact.zip"
+
+      - name: Verify package, source fingerprint and provenance without executing PR code
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 trusted/.github/scripts/verify-runtime-approval.py \
+            --candidate candidate \
+            --artifact "$RUNNER_TEMP/candidate-artifact.zip" \
+            --fingerprint "${{ inputs.build_fingerprint }}" \
+            --package-sha256 "${{ inputs.package_sha256 }}" \
+            --head-sha "${{ steps.resolve.outputs.head_sha }}" \
+            --run-id "${{ steps.resolve.outputs.run_id }}" \
+            --pr "${{ inputs.pr_number }}" \
+            --rom-fingerprint "${{ inputs.rom_build_fingerprint }}" \
+            --output "$RUNNER_TEMP/approval.json"
+
+      - name: Record approval and rerun the exact-head runtime check
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ inputs.pr_number }}
+          HEAD_SHA: ${{ steps.resolve.outputs.head_sha }}
+          POLICY_RUN_ID: ${{ steps.resolve.outputs.policy_run_id }}
+        run: |
+          set -euo pipefail
+          approved_at="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          jq \
+            --arg actor "$GITHUB_ACTOR" \
+            --arg approved_at "$approved_at" \
+            '. + {operator:$actor, approved_at:$approved_at}' \
+            "$RUNNER_TEMP/approval.json" > "$RUNNER_TEMP/approval-final.json"
+
+          {
+            echo '<!-- kernel-runtime-approval:v1 -->'
+            echo 'Phone-test approval for this exact candidate:'
+            echo
+            echo '```json'
+            jq . "$RUNNER_TEMP/approval-final.json"
+            echo '```'
+          } > "$RUNNER_TEMP/comment.md"
+          gh api --method POST \
+            "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" \
+            -F body=@"$RUNNER_TEMP/comment.md"
+
+          gh api --method POST \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$POLICY_RUN_ID/rerun-failed-jobs"
+
+          cat "$RUNNER_TEMP/approval-final.json" >> "$GITHUB_STEP_SUMMARY"
