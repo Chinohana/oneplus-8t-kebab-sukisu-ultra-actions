@@ -983,11 +983,15 @@ jobs:
           export PATH="$GITHUB_WORKSPACE/toolchains/clang/bin:$PATH"
           export KBUILD_BUILD_USER=github-actions
           export KBUILD_BUILD_HOST=github
+          export SOURCE_DATE_EPOCH="$(
+            git -C kernel_experiment show -s --format=%ct "$KERNEL_COMMIT"
+          )"
+          export KBUILD_BUILD_TIMESTAMP="@$SOURCE_DATE_EPOCH"
+          export KBUILD_BUILD_VERSION=1
           if test "$USE_CCACHE" = "true"; then
             export CCACHE_DIR="$GITHUB_WORKSPACE/.ccache"
             export CCACHE_MAXSIZE=8G
             export CCACHE_COMPRESS=1
-            export CCACHE_SLOPPINESS=time_macros
           fi
 
           build_kernel() {
@@ -1705,6 +1709,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p artifacts/kernel/audit
+          migration_equivalence=not-applicable
 
           if test "$USE_ANYKERNEL" = "true"; then
             cp "${PACKAGE_NAME}.zip" "${PACKAGE_NAME}.zip.sha256" \
@@ -1741,10 +1746,16 @@ jobs:
             } > "$RUNNER_TEMP/migration-current.sha256"
             grep -v '^#' config/migration-baseline-lineage-23.2.sha256 \
               > "$RUNNER_TEMP/migration-approved.sha256"
-            diff -u "$RUNNER_TEMP/migration-approved.sha256" \
-              "$RUNNER_TEMP/migration-current.sha256"
             cp "$RUNNER_TEMP/migration-current.sha256" \
               artifacts/kernel/audit/migration-equivalence.sha256
+            if diff -u "$RUNNER_TEMP/migration-approved.sha256" \
+              "$RUNNER_TEMP/migration-current.sha256" \
+              > artifacts/kernel/audit/migration-equivalence.diff; then
+              migration_equivalence=identical
+            else
+              migration_equivalence=different-phone-retest-required
+              echo "::warning::Image/config/System.map differ from the approved migration baseline; a new phone test is required."
+            fi
           fi
 
           {
@@ -1763,6 +1774,7 @@ jobs:
             echo "build_channel=$BUILD_CHANNEL"
             echo "build_fingerprint=$BUILD_FINGERPRINT"
             echo "base_kernel_commit=$BASE_KERNEL_COMMIT"
+            echo "migration_equivalence=$migration_equivalence"
             echo "builder_commit=$GITHUB_SHA"
             echo "builder_base_commit=$BUILDER_BASE_COMMIT"
             echo "github_run_id=$GITHUB_RUN_ID"
