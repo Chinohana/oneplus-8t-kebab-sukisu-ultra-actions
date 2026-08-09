@@ -1,0 +1,41 @@
+name: Cleanup pull request caches
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  cleanup:
+    name: Delete caches scoped to the closed pull request
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Delete pull request caches
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cache_ref="refs/pull/${PR_NUMBER}/merge"
+          mapfile -t cache_ids < <(
+            gh cache list \
+              --repo "$GITHUB_REPOSITORY" \
+              --ref "$cache_ref" \
+              --limit 100 \
+              --json id \
+              --jq '.[].id'
+          )
+
+          if test "${#cache_ids[@]}" -eq 0; then
+            echo "No caches found for $cache_ref."
+            exit 0
+          fi
+
+          for cache_id in "${cache_ids[@]}"; do
+            gh cache delete "$cache_id" --repo "$GITHUB_REPOSITORY"
+          done
+          echo "Deleted ${#cache_ids[@]} cache(s) for $cache_ref."
