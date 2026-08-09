@@ -1,5 +1,7 @@
 name: Build kebab SukiSU Ultra
 
+run-name: ${{ inputs.kernel_source == 'latest-lineage-23.2' && 'UNAPPROVED_LATEST LineageOS 23.2 build' || 'Build kebab SukiSU Ultra' }}
+
 on:
   push:
     branches:
@@ -29,6 +31,10 @@ on:
         required: false
         type: string
         default: ""
+      kernel_source:
+        required: false
+        type: string
+        default: approved-pin
   workflow_dispatch:
     inputs:
       enable_susfs:
@@ -61,6 +67,14 @@ on:
         required: false
         type: boolean
         default: true
+      kernel_source:
+        description: "Kernel source: approved bookmark, or latest LineageOS 23.2 at run time"
+        required: true
+        type: choice
+        default: approved-pin
+        options:
+          - approved-pin
+          - latest-lineage-23.2
 
 permissions:
   contents: read
@@ -77,6 +91,7 @@ env:
   USE_CCACHE: ${{ github.event_name == 'push' || inputs.use_ccache }}
   BUILD_CHANNEL: ${{ inputs.build_channel || 'approved' }}
   BASE_KERNEL_COMMIT: ${{ inputs.base_kernel_commit || '' }}
+  KERNEL_SOURCE_MODE: ${{ inputs.kernel_source || 'approved-pin' }}
 
 jobs:
   audit-build:
@@ -98,6 +113,46 @@ jobs:
         run: |
           set -euo pipefail
           source .github/scripts/load-build-pins.sh "$GITHUB_WORKSPACE"
+          pinned_kernel="$(
+            bash .github/scripts/resolve-kernel-pin.sh "$GITHUB_WORKSPACE" |
+              tail -n1
+          )"
+          case "$KERNEL_SOURCE_MODE" in
+            approved-pin) ;;
+            latest-lineage-23.2)
+              test "$GITHUB_EVENT_NAME" = workflow_dispatch
+              latest_kernel="$(
+                git ls-remote "$KERNEL_REPOSITORY" \
+                  "refs/heads/$KERNEL_BRANCH" |
+                  awk 'NR == 1 {print $1}'
+              )"
+              [[ "$latest_kernel" =~ ^[0-9a-f]{40}$ ]]
+
+              upstream="$RUNNER_TEMP/lineage-kernel-history"
+              git init --bare "$upstream"
+              git -C "$upstream" remote add origin "$KERNEL_REPOSITORY"
+              git -C "$upstream" fetch --no-tags --filter=blob:none origin \
+                "+refs/heads/$KERNEL_BRANCH:refs/remotes/origin/$KERNEL_BRANCH"
+              test "$(
+                git -C "$upstream" rev-parse \
+                  "refs/remotes/origin/$KERNEL_BRANCH"
+              )" = "$latest_kernel"
+              git -C "$upstream" merge-base --is-ancestor \
+                "$pinned_kernel" "$latest_kernel"
+
+              {
+                echo "KERNEL_COMMIT_OVERRIDE=$latest_kernel"
+                echo "KERNEL_COMMIT=$latest_kernel"
+                echo "BASE_KERNEL_COMMIT=$pinned_kernel"
+                echo "BUILD_CHANNEL=unapproved_latest"
+              } >> "$GITHUB_ENV"
+              export KERNEL_COMMIT_OVERRIDE="$latest_kernel"
+              ;;
+            *)
+              echo "::error::Unknown kernel source mode: $KERNEL_SOURCE_MODE"
+              exit 1
+              ;;
+          esac
           bash .github/scripts/resolve-kernel-pin.sh "$GITHUB_WORKSPACE"
           test "$KERNEL_BRANCH" = lineage-23.2
 
@@ -106,11 +161,23 @@ jobs:
         run: |
           set -euo pipefail
 
-          if test "$BUILD_CHANNEL" = approved; then
-            test "$GITHUB_REF" = "refs/heads/$CANONICAL_BRANCH"
-          else
-            test "$BUILD_CHANNEL" = candidate
-          fi
+          case "$BUILD_CHANNEL" in
+            approved)
+              test "$GITHUB_REF" = "refs/heads/$CANONICAL_BRANCH"
+              test "$KERNEL_SOURCE_MODE" = approved-pin
+              ;;
+            candidate)
+              test "$KERNEL_SOURCE_MODE" = approved-pin
+              ;;
+            unapproved_latest)
+              test "$GITHUB_EVENT_NAME" = workflow_dispatch
+              test "$KERNEL_SOURCE_MODE" = latest-lineage-23.2
+              ;;
+            *)
+              echo "::error::Unknown build channel: $BUILD_CHANNEL"
+              exit 1
+              ;;
+          esac
           if test "$ENABLE_SUSFS" = "true"; then
             case "$PROFILE" in
               smoke|minimal-mount|extended-stat|extended-full) ;;
@@ -1853,7 +1920,7 @@ jobs:
           name: ${{ env.KERNEL_ARTIFACT_NAME }}
           path: artifacts/kernel
           if-no-files-found: error
-          retention-days: ${{ inputs.build_channel == 'candidate' && 30 || 7 }}
+          retention-days: ${{ env.BUILD_CHANNEL == 'approved' && 7 || 30 }}
 
       - name: Upload pinned v2.2 userspace test tool
         if: ${{ env.ENABLE_SUSFS == 'true' }}
@@ -1862,4 +1929,4 @@ jobs:
           name: ${{ env.TOOL_ARTIFACT_NAME }}
           path: artifacts/tool
           if-no-files-found: error
-          retention-days: ${{ inputs.build_channel == 'candidate' && 30 || 7 }}
+          retention-days: ${{ env.BUILD_CHANNEL == 'approved' && 7 || 30 }}

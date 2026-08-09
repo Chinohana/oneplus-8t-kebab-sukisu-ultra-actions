@@ -24,7 +24,7 @@ case "$susfs_profile" in
   *) echo "Invalid SUSFS profile: $susfs_profile" >&2; exit 1 ;;
 esac
 case "$build_channel" in
-  approved|candidate) ;;
+  approved|candidate|unapproved_latest) ;;
   *) echo "Invalid build channel: $build_channel" >&2; exit 1 ;;
 esac
 
