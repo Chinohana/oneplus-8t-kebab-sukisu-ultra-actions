@@ -2,3 +2,4 @@
 *.img
 __pycache__/
 work/
+audit-local/

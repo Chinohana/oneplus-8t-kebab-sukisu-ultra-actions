@@ -1,0 +1,141 @@
+name: Kernel candidate
+
+on:
+  pull_request:
+    branches:
+      - main
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kernel-candidate-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  inspect:
+    name: Inspect pinned LineageOS kernel
+    runs-on: ubuntu-24.04
+    outputs:
+      needs_build: ${{ steps.inspect.outputs.needs_build }}
+      kernel_changed: ${{ steps.inspect.outputs.kernel_changed }}
+      old_kernel: ${{ steps.inspect.outputs.old_kernel }}
+      new_kernel: ${{ steps.inspect.outputs.new_kernel }}
+      fingerprint: ${{ steps.fingerprint.outputs.fingerprint }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify direction, branch and exact upstream tip
+        id: inspect
+        shell: bash
+        run: |
+          bash .github/scripts/validate-kernel-candidate.sh \
+            "$GITHUB_WORKSPACE" \
+            "${{ github.event.pull_request.base.sha }}"
+
+      - name: Compute the phone-test fingerprint
+        id: fingerprint
+        if: steps.inspect.outputs.needs_build == 'true'
+        shell: bash
+        env:
+          ENABLE_SUSFS: "true"
+          SUSFS_PROFILE: extended-full
+          ENABLE_SELINUX_HIDE: "true"
+          USE_ANYKERNEL: "true"
+          BUILD_CHANNEL: candidate
+        run: |
+          set -euo pipefail
+          fingerprint="$(
+            bash .github/scripts/compute-build-fingerprint.sh \
+              "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE/candidate-audit"
+          )"
+          echo "fingerprint=$fingerprint" >> "$GITHUB_OUTPUT"
+
+      - name: Write candidate metadata
+        if: steps.inspect.outputs.needs_build == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p candidate-metadata
+          if test -s kernel-upstream-changes.txt; then
+            cp kernel-upstream-changes.txt candidate-metadata/
+          else
+            : > candidate-metadata/kernel-upstream-changes.txt
+          fi
+          cp -a candidate-audit/. candidate-metadata/
+          jq -n \
+            --arg pr "${{ github.event.pull_request.number }}" \
+            --arg head "${{ github.event.pull_request.head.sha }}" \
+            --arg old "${{ steps.inspect.outputs.old_kernel }}" \
+            --arg new "${{ steps.inspect.outputs.new_kernel }}" \
+            --arg fingerprint "${{ steps.fingerprint.outputs.fingerprint }}" \
+            '{schema:1, status:"CANDIDATE", pr:($pr|tonumber), head_sha:$head, old_kernel:$old, new_kernel:$new, build_fingerprint:$fingerprint}' \
+            > candidate-metadata/candidate.json
+
+      - name: Upload candidate metadata
+        if: steps.inspect.outputs.needs_build == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: CANDIDATE_kernel-lineage-23.2_metadata
+          path: candidate-metadata
+          if-no-files-found: error
+          retention-days: 30
+
+  candidate-build:
+    name: Candidate ${{ matrix.variant }}
+    needs: inspect
+    if: needs.inspect.outputs.needs_build == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: sukisu-only
+            enable_susfs: false
+            profile: smoke
+            enable_hide: false
+          - variant: selinux-hide
+            enable_susfs: false
+            profile: smoke
+            enable_hide: true
+          - variant: susfs-extended-stat
+            enable_susfs: true
+            profile: extended-stat
+            enable_hide: false
+          - variant: current-extended-full-hide
+            enable_susfs: true
+            profile: extended-full
+            enable_hide: true
+    uses: ./.github/workflows/build-sukisu-ultra.yml
+    with:
+      enable_susfs: ${{ matrix.enable_susfs }}
+      susfs_profile: ${{ matrix.profile }}
+      enable_selinux_hide: ${{ matrix.enable_hide }}
+      use_anykernel: true
+      use_ccache: true
+      build_channel: candidate
+      base_kernel_commit: ${{ needs.inspect.outputs.old_kernel }}
+
+  kernel-candidate-gate:
+    name: kernel-candidate-gate
+    if: always()
+    needs: [inspect, candidate-build]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require inspection and every applicable candidate build
+        shell: bash
+        env:
+          INSPECT_RESULT: ${{ needs.inspect.result }}
+          BUILD_RESULT: ${{ needs.candidate-build.result }}
+          NEEDS_BUILD: ${{ needs.inspect.outputs.needs_build }}
+        run: |
+          set -euo pipefail
+          test "$INSPECT_RESULT" = success
+          if test "$NEEDS_BUILD" = true; then
+            test "$BUILD_RESULT" = success
+          else
+            test "$BUILD_RESULT" = skipped
+          fi
