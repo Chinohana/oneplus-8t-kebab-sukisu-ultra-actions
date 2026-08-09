@@ -1,0 +1,8 @@
+# Security-sensitive build and promotion inputs require the repository owner.
+/.github/workflows/ @Chinohana
+/.github/scripts/ @Chinohana
+/.github/dependabot.yml @Chinohana
+/.gitmodules @Chinohana
+/config/ @Chinohana
+/patches/ @Chinohana
+/pins/kernel-lineage-23.2 @Chinohana

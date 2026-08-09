@@ -16,7 +16,7 @@ LineageOS 23.2 Linux 4.19 内核上集成了 SukiSU Ultra 和 SUSFS v2.2。
 | --- | --- |
 | 设备 | OnePlus 8T（`kebab`，已测试型号 KB2000） |
 | 系统 | LineageOS 23.2 / Android 16 |
-| 内核 | Linux 4.19，LineageOS `lineage-24.0` 分支，提交 `4238ee49a84b` |
+| 内核 | Linux 4.19，LineageOS `lineage-23.2` 分支；确切提交见内核书签 |
 | Root | SukiSU Ultra `builtin`，版本 40856 |
 | SUSFS | v2.2.0，NON-GKI，Inline Hook |
 | 编译器 | Android Clang `r563880` |
@@ -99,20 +99,14 @@ UID（≥10000）读取 `/sys/fs/selinux` 的 policy/status 时看到的是 KSU 
    - **Enable SELinux hide**：编译“隐藏 SELinux 修改”（Linux 4.19 回移植）。
    - **Use AnyKernel3**：打包为 AnyKernel3 ZIP；关闭时产物为 raw
      `Image` / `System.map` / 配置与 provenance。
-   - **Track upstream latest**：构建前解析上游最新提交（见下）。
    - **Use ccache**：用 ccache 缓存编译输出（默认开启）。同 pin 的重复
      构建会直接命中缓存，把单次构建从约 75 分钟降到约 15–20 分钟；新
      pin 首次构建约 45 分钟。产物与审计结果不受影响（ccache 对相同输入
      重放完全相同的编译输出）。关闭后回到不带缓存的旧构建路径。
 5. 构建成功后下载 kernel artifact，并核对其中的 SHA-256 和 provenance。
 
-默认使用固定的上游提交构建，保证同一仓库状态每次产生相同产物。若勾选
-**Track upstream latest**，工作流会在构建前解析 LineageOS `lineage-24.0`
-与 SukiSU `builtin` 分支的最新提交并立即使用它们。由于补丁是精确基线，
-一旦上游推进到补丁无法应用的提交，构建会在补丁检查阶段明确失败——这是
-预期的安全行为：此时需要重新生成或更新 `patches/` 下的补丁。解析到的
-实际提交会写入产物 provenance（`tracked_kernel_commit` /
-`tracked_sukisu_commit`）。
+手动正式构建永远使用仓库已经批准的固定版本，不能临时追踪上游。内核、
+SukiSU、SUSFS、编译器和打包工具分别固定；更新内核不会顺带更新其他项目。
 
 工作流提供四种配置：
 
@@ -130,16 +124,45 @@ SELinux hide 可自由组合（四个组合均受 CI 审计）。
 Image 大小。内核、SukiSU、SUSFS、Clang 和 AnyKernel3 都使用固定提交，避免
 上游更新悄悄改变结果。
 
-## 上游版本现状
+## 内核安全更新怎样进入本仓库
 
-- **内核**：LineageOS 已为 kebab 建立 `lineage-24.0` 分支，本仓库默认跟随
-  该分支。当前 `lineage-24.0` 与 `lineage-23.2` 指向同一提交
-  `4238ee49a84b`，因此产物同时适用于 LineageOS 23.2 与 24.0 的内核线。
+仓库每天检查一次 LineageOS `lineage-23.2` 内核分支。发现新提交时，只会创建
+一个候选 PR，不会自动合并、刷机或替换正式内核。
+
+候选 PR 会先确认新提交确实是该分支的最新提交，而且位于旧提交之后。云端随后
+编译纯 SukiSU、SELinux hide、SUSFS `extended-stat` 和当前使用的
+`extended-full + SELinux hide`，并重复配置、符号、补丁及 Image 大小检查。
+测试包名称以 `CANDIDATE_` 开头，保存 30 天。编译失败时，仓库会打开或更新
+`Kernel update blocked: lineage-23.2` Issue，防止更新悄悄卡住。
+
+云端通过不等于可以采用。下载当前配置的候选包后，按以下顺序在 OnePlus 8T
+上测试：
+
+1. 核对候选页面给出的 SHA-256；
+2. 先用 `fastboot boot` 临时启动，不要直接刷入；
+3. 检查开机、ADB、root、加密存储、SELinux Enforcing 和主要硬件；
+4. 检查 SUSFS，并来回开关一次 SELinux hide；
+5. 确认 dmesg 与 pstore 没有 panic、oops、BUG、UAF 或 lockup；
+6. 测试完全通过后，手动运行 **Approve kernel candidate**，填写 PR 编号、
+   构建指纹、已测试包 SHA-256 和手机当前 ROM build fingerprint。
+
+批准记录只对那个 PR 的那次内容有效。内核、补丁、工具版本或构建脚本中任何
+一项改变，都必须重新编译并重新真机测试。最终仍需要人工审核并点击合并。
+
+> [!IMPORTANT]
+> 跟随内核仓库只能取得内核里的修复。LineageOS 月更还可能包含 Android 系统、
+> 驱动二进制文件和应用层修复；更新内核不代表已经包含整个月度安全更新。
+
+## 固定的其他上游项目
+
 - **SukiSU**：`builtin` 分支是支持传统 Manual Hook（非 GKI 内联调用、
   无需 KPROBES）的分支，本仓库固定其最新提交 `b1d534bc`。SukiSU 的
   `main` 分支（v4.x）是新一代架构，`CONFIG_KSU` 硬依赖 `CONFIG_KPROBES`
   且使用运行时 syscall 打补丁与 LSM Hook，与本项目"KPM/kprobes 关闭、
   禁止运行时打补丁"的约束冲突，因此不用于本仓库。
+
+本仓库目前只支持 LineageOS 23.2，不为 LineageOS 24.0 产出正式包。将来手机
+正式升级到 24.0 后，会建立一套新的内核书签并重新完成首次真机批准。
 
 ## 安装前必须知道
 
