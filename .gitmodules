@@ -1,0 +1,4 @@
+[submodule "kernel-lineage-23.2"]
+	path = pins/kernel-lineage-23.2
+	url = https://github.com/LineageOS/android_kernel_oneplus_sm8250.git
+	branch = lineage-23.2
