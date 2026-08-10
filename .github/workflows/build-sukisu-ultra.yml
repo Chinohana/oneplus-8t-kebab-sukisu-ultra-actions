@@ -201,6 +201,7 @@ jobs:
           fi
           test -s "$SUKISU_COMPAT_PATCH"
           test -s "$BASELINE_HOOK_PATCH"
+          test -s "$REPRODUCIBLE_KHEADERS_PATCH"
           if test "$ENABLE_SELINUX_HIDE" = "true"; then
             test -s "$SELINUX_HIDE_SUKISU_PATCH"
             test -s "$SELINUX_HIDE_KERNEL_PATCH"
@@ -336,6 +337,23 @@ jobs:
           set -euo pipefail
           mkdir -p audit
 
+          cat > "$RUNNER_TEMP/reproducible-kheaders-files.expected" <<'EOF'
+          kernel/gen_kheaders.sh
+          EOF
+          sed -i 's/^          //' \
+            "$RUNNER_TEMP/reproducible-kheaders-files.expected"
+          git apply --numstat "$REPRODUCIBLE_KHEADERS_PATCH" |
+            awk -F '\t' '{print $3}' |
+            LC_ALL=C sort -u \
+            > "$RUNNER_TEMP/reproducible-kheaders-files.from-patch"
+          diff -u "$RUNNER_TEMP/reproducible-kheaders-files.expected" \
+            "$RUNNER_TEMP/reproducible-kheaders-files.from-patch"
+          if grep -Eq '(^/|(^|/)\.\.(/|$)|\\)' \
+            "$RUNNER_TEMP/reproducible-kheaders-files.from-patch"; then
+            echo "::error::Unsafe path found in the reproducible kheaders patch."
+            exit 1
+          fi
+
           if test "$ENABLE_SUSFS" = "true"; then
             cat > "$RUNNER_TEMP/susfs-kernel-files.expected" <<'EOF'
           fs/Makefile
@@ -448,7 +466,7 @@ jobs:
             patch_hash_list="${patch_hash_list}$SELINUX_HIDE_SUKISU_PATCH $SELINUX_HIDE_KERNEL_PATCH "
           fi
           sha256sum $patch_hash_list "$SUKISU_COMPAT_PATCH" \
-            "$BASELINE_HOOK_PATCH" |
+            "$BASELINE_HOOK_PATCH" "$REPRODUCIBLE_KHEADERS_PATCH" |
             tee audit/patches.sha256
 
       - name: Prepare exact common kernel and SukiSU source
@@ -583,6 +601,24 @@ jobs:
             LC_ALL=C sort -u > "$RUNNER_TEMP/experiment-files.expected"
           diff -u "$RUNNER_TEMP/experiment-files.expected" \
             "$RUNNER_TEMP/susfs-kernel-files.actual"
+
+          for tree in kernel_baseline kernel_experiment; do
+            git -C "$tree" apply --check --whitespace=error-all \
+              "$GITHUB_WORKSPACE/$REPRODUCIBLE_KHEADERS_PATCH"
+            git -C "$tree" apply --whitespace=error-all \
+              "$GITHUB_WORKSPACE/$REPRODUCIBLE_KHEADERS_PATCH"
+            git -C "$tree" diff --check
+            grep -Fq -- "--sort=name --mtime=\"@\${SOURCE_DATE_EPOCH:-0}\"" \
+              "$tree/kernel/gen_kheaders.sh"
+          done
+          {
+            git -C kernel_baseline diff --name-only -- kernel/gen_kheaders.sh
+            git -C kernel_experiment diff --name-only -- kernel/gen_kheaders.sh
+          } | LC_ALL=C sort -u \
+            > "$RUNNER_TEMP/reproducible-kheaders-files.actual"
+          diff -u "$RUNNER_TEMP/reproducible-kheaders-files.expected" \
+            "$RUNNER_TEMP/reproducible-kheaders-files.actual"
+          cp "$RUNNER_TEMP/reproducible-kheaders-files.actual" audit/
 
           find kernel_baseline kernel_experiment \
             -path '*/.git' -prune -o \
