@@ -99,15 +99,22 @@ UID（≥10000）读取 `/sys/fs/selinux` 的 policy/status 时看到的是 KSU 
    - **Enable SELinux hide**：编译“隐藏 SELinux 修改”（Linux 4.19 回移植）。
    - **Use AnyKernel3**：打包为 AnyKernel3 ZIP；关闭时产物为 raw
      `Image` / `System.map` / 配置与 provenance。
-   - **Use ccache**：用 ccache 缓存编译输出（默认开启）。同 pin 的重复
-     构建直接命中缓存（实测命中率 ~99%），把单次构建从约 75 分钟降到
-     约 40 分钟；新 pin 首次构建约 85–90 分钟（冷启动填充缓存）。产物
-     与审计结果不受影响（ccache 对相同输入重放完全相同的编译输出）。
-     关闭后回到不带缓存的旧构建路径。
+   - **Use ccache**：用 ccache 缓存编译输出（默认开启）。基线、smoke、
+     minimal-mount 和最终配置各用自己的小缓存，不会再由四个候选任务争抢
+     同一个缓存。新配置或新内核第一次仍可能需要约 75–90 分钟；缓存建立
+     后，相同输入的重复构建目标约 30–45 分钟。LTO、链接和审计始终重新
+     执行，所以不会缩短到几分钟。缓存不改变产物；关闭后回到不带缓存的
+     旧构建路径。PR 关闭或合并后，其专属缓存会自动删除。
+   - **Kernel source**：`approved-pin` 使用仓库已经批准的提交；
+     `latest-lineage-23.2` 会在手动运行开始时查询 LineageOS 最新提交并直接
+     用于本次编译。后一种产物以 `UNAPPROVED_LATEST_` 开头，保存 30 天。
 5. 构建成功后下载 kernel artifact，并核对其中的 SHA-256 和 provenance。
 
-手动正式构建永远使用仓库已经批准的固定版本，不能临时追踪上游。内核、
-SukiSU、SUSFS、编译器和打包工具分别固定；更新内核不会顺带更新其他项目。
+默认的正式构建仍使用仓库已经批准的固定版本。只有你在手动 Actions 中明确选择
+`latest-lineage-23.2` 时，本次构建才会追踪上游；它不会改变仓库书签，也不会
+自动合并或刷机。SukiSU、SUSFS、编译器和打包工具仍分别固定，不会一起更新。
+手动最新源码构建结束后，无论成功、失败或取消，GitHub 都会 `@Chinohana` 并
+通过账户的通知邮件设置发送结果。
 
 工作流提供四种配置：
 
