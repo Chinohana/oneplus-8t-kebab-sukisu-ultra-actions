@@ -594,7 +594,6 @@ jobs:
           else
             expected_files="$RUNNER_TEMP/baseline-hook-files.expected"
           fi
-          expected_files="$expected_files $RUNNER_TEMP/reproducible-kheaders-files.expected"
           if test "$ENABLE_SELINUX_HIDE" = "true"; then
             expected_files="$expected_files $RUNNER_TEMP/selinux-hide-kernel-files.expected"
           fi
@@ -1777,6 +1776,7 @@ jobs:
           else
             expected_files="$RUNNER_TEMP/baseline-hook-files.expected"
           fi
+          expected_files="$expected_files $RUNNER_TEMP/reproducible-kheaders-files.expected"
           if test "$ENABLE_SELINUX_HIDE" = "true"; then
             expected_files="$expected_files $RUNNER_TEMP/selinux-hide-kernel-files.expected"
           fi
