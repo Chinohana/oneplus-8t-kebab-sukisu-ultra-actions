@@ -1,26 +1,83 @@
-name: Report blocked kernel update
+name: Notify kernel candidate result
 
 on:
   workflow_run:
-    workflows: [Kernel candidate]
+    workflows: [Kernel candidate, Build kebab SukiSU Ultra]
     types: [completed]
 
 permissions:
   actions: read
   contents: read
   issues: write
+  pull-requests: write
 
 jobs:
-  maintain-issue:
+  notify-result:
     runs-on: ubuntu-24.04
     steps:
-      - name: Open, update or close the single blocked-update issue
+      - name: Email through GitHub and maintain the blocked-update issue
         uses: actions/github-script@v7
         with:
           script: |
             const title = 'Kernel update blocked: lineage-23.2';
+            const notifyUser = 'Chinohana';
             const run = context.payload.workflow_run;
             const { owner, repo } = context.repo;
+            const manualLatest =
+              run.event === 'workflow_dispatch' &&
+              run.display_title === 'UNAPPROVED_LATEST LineageOS 23.2 build';
+
+            if (manualLatest) {
+              const manualTitle = 'Manual latest LineageOS 23.2 build result';
+              const allIssues = await github.paginate(
+                github.rest.issues.listForRepo,
+                { owner, repo, state: 'all', per_page: 100 }
+              );
+              const previous = allIssues.find(
+                issue => !issue.pull_request && issue.title === manualTitle
+              );
+              const icon = run.conclusion === 'success' ? '✅' :
+                (run.conclusion === 'failure' ? '❌' : '⚠️');
+              const summary = [
+                `@${notifyUser} ${icon} Manual latest LineageOS 23.2 build finished: **${run.conclusion}**.`,
+                '',
+                `Run: [${run.name} #${run.run_number}](${run.html_url})`,
+                `Head commit: \`${run.head_sha}\``,
+                '',
+                'The output is UNAPPROVED_LATEST and was not merged, installed or flashed automatically.'
+              ].join('\n');
+
+              if (previous) {
+                await github.rest.issues.update({
+                  owner, repo, issue_number: previous.number,
+                  state: 'open', body: summary, assignees: [notifyUser]
+                });
+                await github.rest.issues.createComment({
+                  owner, repo, issue_number: previous.number, body: summary
+                });
+              } else {
+                await github.rest.issues.create({
+                  owner, repo, title: manualTitle, body: summary,
+                  assignees: [notifyUser]
+                });
+              }
+              return;
+            }
+
+            const pull = run.pull_requests?.[0];
+            if (!pull) {
+              core.info('No pull request is associated with this run; ignoring it.');
+              return;
+            }
+
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              owner, repo, pull_number: pull.number, per_page: 100
+            });
+            if (!files.some(file => file.filename === 'pins/kernel-lineage-23.2')) {
+              core.info('This is not a LineageOS kernel bookmark update; no notification sent.');
+              return;
+            }
+
             const all = await github.paginate(github.rest.issues.listForRepo, {
               owner, repo, state: 'all', per_page: 100
             });
@@ -37,9 +94,34 @@ jobs:
                   owner, repo, issue_number: open.number, state: 'closed'
                 });
               }
+
+              await github.rest.issues.createComment({
+                owner, repo, issue_number: pull.number,
+                body: [
+                  `@${notifyUser} ✅ LineageOS 23.2 kernel candidate cloud build passed.`,
+                  '',
+                  `Run: [${run.name} #${run.run_number}](${run.html_url})`,
+                  '',
+                  'The CANDIDATE package is ready for the phone-test workflow. Nothing was merged, installed or flashed.'
+                ].join('\n')
+              });
+              try {
+                await github.rest.pulls.requestReviewers({
+                  owner, repo, pull_number: pull.number,
+                  reviewers: [notifyUser]
+                });
+              } catch (error) {
+                core.warning(`Could not request a review from ${notifyUser}: ${error.message}`);
+              }
               return;
             }
-            if (run.conclusion === 'cancelled' || run.conclusion === 'skipped') return;
+            if (run.conclusion === 'cancelled' || run.conclusion === 'skipped') {
+              await github.rest.issues.createComment({
+                owner, repo, issue_number: pull.number,
+                body: `@${notifyUser} ⚠️ LineageOS 23.2 kernel candidate run ${run.conclusion}: [open run ${run.id}](${run.html_url}). No kernel was merged, installed or flashed.`
+              });
+              return;
+            }
 
             const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, {
               owner, repo, run_id: run.id, filter: 'latest', per_page: 100
@@ -60,21 +142,34 @@ jobs:
               'No kernel was merged, installed or flashed. Fix the candidate PR, then rerun its checks.'
             ].join('\n');
 
+            let issueNumber;
             if (open) {
               await github.rest.issues.update({
-                owner, repo, issue_number: open.number, body
+                owner, repo, issue_number: open.number, body,
+                assignees: [notifyUser]
               });
               await github.rest.issues.createComment({
                 owner, repo, issue_number: open.number,
                 body: `Still blocked by [candidate run ${run.id}](${run.html_url}).`
               });
+              issueNumber = open.number;
             } else {
               const issue = matches[0];
               if (issue) {
                 await github.rest.issues.update({
-                  owner, repo, issue_number: issue.number, state: 'open', body
+                  owner, repo, issue_number: issue.number, state: 'open', body,
+                  assignees: [notifyUser]
                 });
+                issueNumber = issue.number;
               } else {
-                await github.rest.issues.create({ owner, repo, title, body });
+                const created = await github.rest.issues.create({
+                  owner, repo, title, body, assignees: [notifyUser]
+                });
+                issueNumber = created.data.number;
               }
             }
+
+            await github.rest.issues.createComment({
+              owner, repo, issue_number: pull.number,
+              body: `@${notifyUser} ❌ LineageOS 23.2 kernel candidate cloud build failed. See #${issueNumber} and [run ${run.id}](${run.html_url}). Nothing was merged, installed or flashed.`
+            });

@@ -1,5 +1,7 @@
 name: Build kebab SukiSU Ultra
 
+run-name: ${{ inputs.kernel_source == 'latest-lineage-23.2' && 'UNAPPROVED_LATEST LineageOS 23.2 build' || 'Build kebab SukiSU Ultra' }}
+
 on:
   push:
     branches:
@@ -29,6 +31,10 @@ on:
         required: false
         type: string
         default: ""
+      kernel_source:
+        required: false
+        type: string
+        default: approved-pin
   workflow_dispatch:
     inputs:
       enable_susfs:
@@ -61,6 +67,14 @@ on:
         required: false
         type: boolean
         default: true
+      kernel_source:
+        description: "Kernel source: approved bookmark, or latest LineageOS 23.2 at run time"
+        required: true
+        type: choice
+        default: approved-pin
+        options:
+          - approved-pin
+          - latest-lineage-23.2
 
 permissions:
   contents: read
@@ -77,6 +91,7 @@ env:
   USE_CCACHE: ${{ github.event_name == 'push' || inputs.use_ccache }}
   BUILD_CHANNEL: ${{ inputs.build_channel || 'approved' }}
   BASE_KERNEL_COMMIT: ${{ inputs.base_kernel_commit || '' }}
+  KERNEL_SOURCE_MODE: ${{ inputs.kernel_source || 'approved-pin' }}
 
 jobs:
   audit-build:
@@ -98,6 +113,46 @@ jobs:
         run: |
           set -euo pipefail
           source .github/scripts/load-build-pins.sh "$GITHUB_WORKSPACE"
+          pinned_kernel="$(
+            bash .github/scripts/resolve-kernel-pin.sh "$GITHUB_WORKSPACE" |
+              tail -n1
+          )"
+          case "$KERNEL_SOURCE_MODE" in
+            approved-pin) ;;
+            latest-lineage-23.2)
+              test "$GITHUB_EVENT_NAME" = workflow_dispatch
+              latest_kernel="$(
+                git ls-remote "$KERNEL_REPOSITORY" \
+                  "refs/heads/$KERNEL_BRANCH" |
+                  awk 'NR == 1 {print $1}'
+              )"
+              [[ "$latest_kernel" =~ ^[0-9a-f]{40}$ ]]
+
+              upstream="$RUNNER_TEMP/lineage-kernel-history"
+              git init --bare "$upstream"
+              git -C "$upstream" remote add origin "$KERNEL_REPOSITORY"
+              git -C "$upstream" fetch --no-tags --filter=blob:none origin \
+                "+refs/heads/$KERNEL_BRANCH:refs/remotes/origin/$KERNEL_BRANCH"
+              test "$(
+                git -C "$upstream" rev-parse \
+                  "refs/remotes/origin/$KERNEL_BRANCH"
+              )" = "$latest_kernel"
+              git -C "$upstream" merge-base --is-ancestor \
+                "$pinned_kernel" "$latest_kernel"
+
+              {
+                echo "KERNEL_COMMIT_OVERRIDE=$latest_kernel"
+                echo "KERNEL_COMMIT=$latest_kernel"
+                echo "BASE_KERNEL_COMMIT=$pinned_kernel"
+                echo "BUILD_CHANNEL=unapproved_latest"
+              } >> "$GITHUB_ENV"
+              export KERNEL_COMMIT_OVERRIDE="$latest_kernel"
+              ;;
+            *)
+              echo "::error::Unknown kernel source mode: $KERNEL_SOURCE_MODE"
+              exit 1
+              ;;
+          esac
           bash .github/scripts/resolve-kernel-pin.sh "$GITHUB_WORKSPACE"
           test "$KERNEL_BRANCH" = lineage-23.2
 
@@ -106,11 +161,23 @@ jobs:
         run: |
           set -euo pipefail
 
-          if test "$BUILD_CHANNEL" = approved; then
-            test "$GITHUB_REF" = "refs/heads/$CANONICAL_BRANCH"
-          else
-            test "$BUILD_CHANNEL" = candidate
-          fi
+          case "$BUILD_CHANNEL" in
+            approved)
+              test "$GITHUB_REF" = "refs/heads/$CANONICAL_BRANCH"
+              test "$KERNEL_SOURCE_MODE" = approved-pin
+              ;;
+            candidate)
+              test "$KERNEL_SOURCE_MODE" = approved-pin
+              ;;
+            unapproved_latest)
+              test "$GITHUB_EVENT_NAME" = workflow_dispatch
+              test "$KERNEL_SOURCE_MODE" = latest-lineage-23.2
+              ;;
+            *)
+              echo "::error::Unknown build channel: $BUILD_CHANNEL"
+              exit 1
+              ;;
+          esac
           if test "$ENABLE_SUSFS" = "true"; then
             case "$PROFILE" in
               smoke|minimal-mount|extended-stat|extended-full) ;;
@@ -134,6 +201,7 @@ jobs:
           fi
           test -s "$SUKISU_COMPAT_PATCH"
           test -s "$BASELINE_HOOK_PATCH"
+          test -s "$REPRODUCIBLE_KHEADERS_PATCH"
           if test "$ENABLE_SELINUX_HIDE" = "true"; then
             test -s "$SELINUX_HIDE_SUKISU_PATCH"
             test -s "$SELINUX_HIDE_KERNEL_PATCH"
@@ -147,8 +215,31 @@ jobs:
             bash .github/scripts/compute-build-fingerprint.sh \
               "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE/audit"
           )"
-          echo "BUILD_FINGERPRINT=$fingerprint" >> "$GITHUB_ENV"
+          ccache_source_fingerprint="$(
+            {
+              echo 'ccache_schema=3'
+              echo "kernel_commit=$KERNEL_COMMIT"
+              echo "sukisu_commit=$SUKISU_COMMIT"
+              echo "susfs_commit=$SUSFS_COMMIT"
+              echo "sm8250_reference_commit=$SM8250_REFERENCE_COMMIT"
+              echo "clang_revision=$CLANG_REVISION"
+              echo "clang_archive_commit=$CLANG_ARCHIVE_COMMIT"
+              echo "sukisu_driver_version=$SUKISU_DRIVER_VERSION"
+              cat audit/build-input-files.sha256
+            } | sha256sum | awk '{print $1}'
+          )"
+          if test "$ENABLE_SELINUX_HIDE" = "true"; then
+            ccache_hide_tag=hide
+          else
+            ccache_hide_tag=plain
+          fi
+          {
+            echo "BUILD_FINGERPRINT=$fingerprint"
+            echo "CCACHE_SOURCE_FINGERPRINT=$ccache_source_fingerprint"
+            echo "CCACHE_HIDE_TAG=$ccache_hide_tag"
+          } >> "$GITHUB_ENV"
           echo "Build fingerprint: $fingerprint"
+          echo "ccache source fingerprint: $ccache_source_fingerprint"
 
       - name: Check runner storage
         shell: bash
@@ -245,6 +336,23 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p audit
+
+          cat > "$RUNNER_TEMP/reproducible-kheaders-files.expected" <<'EOF'
+          kernel/gen_kheaders.sh
+          EOF
+          sed -i 's/^          //' \
+            "$RUNNER_TEMP/reproducible-kheaders-files.expected"
+          git apply --numstat "$REPRODUCIBLE_KHEADERS_PATCH" |
+            awk -F '\t' '{print $3}' |
+            LC_ALL=C sort -u \
+            > "$RUNNER_TEMP/reproducible-kheaders-files.from-patch"
+          diff -u "$RUNNER_TEMP/reproducible-kheaders-files.expected" \
+            "$RUNNER_TEMP/reproducible-kheaders-files.from-patch"
+          if grep -Eq '(^/|(^|/)\.\.(/|$)|\\)' \
+            "$RUNNER_TEMP/reproducible-kheaders-files.from-patch"; then
+            echo "::error::Unsafe path found in the reproducible kheaders patch."
+            exit 1
+          fi
 
           if test "$ENABLE_SUSFS" = "true"; then
             cat > "$RUNNER_TEMP/susfs-kernel-files.expected" <<'EOF'
@@ -358,7 +466,7 @@ jobs:
             patch_hash_list="${patch_hash_list}$SELINUX_HIDE_SUKISU_PATCH $SELINUX_HIDE_KERNEL_PATCH "
           fi
           sha256sum $patch_hash_list "$SUKISU_COMPAT_PATCH" \
-            "$BASELINE_HOOK_PATCH" |
+            "$BASELINE_HOOK_PATCH" "$REPRODUCIBLE_KHEADERS_PATCH" |
             tee audit/patches.sha256
 
       - name: Prepare exact common kernel and SukiSU source
@@ -493,6 +601,24 @@ jobs:
             LC_ALL=C sort -u > "$RUNNER_TEMP/experiment-files.expected"
           diff -u "$RUNNER_TEMP/experiment-files.expected" \
             "$RUNNER_TEMP/susfs-kernel-files.actual"
+
+          for tree in kernel_baseline kernel_experiment; do
+            git -C "$tree" apply --check --whitespace=error-all \
+              "$GITHUB_WORKSPACE/$REPRODUCIBLE_KHEADERS_PATCH"
+            git -C "$tree" apply --whitespace=error-all \
+              "$GITHUB_WORKSPACE/$REPRODUCIBLE_KHEADERS_PATCH"
+            git -C "$tree" diff --check
+            grep -Fq -- "--sort=name --mtime=\"@\${SOURCE_DATE_EPOCH:-0}\"" \
+              "$tree/kernel/gen_kheaders.sh"
+          done
+          {
+            git -C kernel_baseline diff --name-only -- kernel/gen_kheaders.sh
+            git -C kernel_experiment diff --name-only -- kernel/gen_kheaders.sh
+          } | LC_ALL=C sort -u \
+            > "$RUNNER_TEMP/reproducible-kheaders-files.actual"
+          diff -u "$RUNNER_TEMP/reproducible-kheaders-files.expected" \
+            "$RUNNER_TEMP/reproducible-kheaders-files.actual"
+          cp "$RUNNER_TEMP/reproducible-kheaders-files.actual" audit/
 
           find kernel_baseline kernel_experiment \
             -path '*/.git' -prune -o \
@@ -966,15 +1092,118 @@ jobs:
               > audit/config-baseline-to-selected.diff
           fi
 
-      - name: Restore ccache
-        id: cache-ccache
+      - name: Restore baseline ccache
+        id: cache-ccache-baseline
         if: ${{ env.USE_CCACHE == 'true' }}
         uses: actions/cache/restore@v4
         with:
-          path: .ccache
-          key: ccache-kebab-${{ hashFiles('patches/*', '.github/workflows/build-sukisu-ultra.yml') }}-${{ env.KERNEL_COMMIT }}-${{ env.SUKISU_COMMIT }}-${{ env.SUKISU_DRIVER_VERSION }}
+          path: .ccache/baseline
+          key: ccache-kebab-v3-${{ env.CLANG_REVISION }}-baseline-${{ env.CCACHE_SOURCE_FINGERPRINT }}
           restore-keys: |
-            ccache-kebab-
+            ccache-kebab-v3-${{ env.CLANG_REVISION }}-baseline-
+
+      - name: Restore selected ccache
+        id: cache-ccache-selected
+        if: ${{ env.USE_CCACHE == 'true' && env.ENABLE_SUSFS != 'true' }}
+        uses: actions/cache/restore@v4
+        with:
+          path: .ccache/selected-${{ env.CCACHE_HIDE_TAG }}
+          key: ccache-kebab-v3-${{ env.CLANG_REVISION }}-selected-${{ env.CCACHE_HIDE_TAG }}-${{ env.CCACHE_SOURCE_FINGERPRINT }}
+          restore-keys: |
+            ccache-kebab-v3-${{ env.CLANG_REVISION }}-selected-${{ env.CCACHE_HIDE_TAG }}-
+
+      - name: Restore smoke ccache
+        id: cache-ccache-smoke
+        if: ${{ env.USE_CCACHE == 'true' && env.ENABLE_SUSFS == 'true' }}
+        uses: actions/cache/restore@v4
+        with:
+          path: .ccache/smoke-${{ env.CCACHE_HIDE_TAG }}
+          key: ccache-kebab-v3-${{ env.CLANG_REVISION }}-smoke-${{ env.CCACHE_HIDE_TAG }}-${{ env.CCACHE_SOURCE_FINGERPRINT }}
+          restore-keys: |
+            ccache-kebab-v3-${{ env.CLANG_REVISION }}-smoke-${{ env.CCACHE_HIDE_TAG }}-
+
+      - name: Restore minimal-mount ccache
+        id: cache-ccache-minimal
+        if: ${{ env.USE_CCACHE == 'true' && env.ENABLE_SUSFS == 'true' && env.PROFILE != 'smoke' }}
+        uses: actions/cache/restore@v4
+        with:
+          path: .ccache/minimal-mount-${{ env.CCACHE_HIDE_TAG }}
+          key: ccache-kebab-v3-${{ env.CLANG_REVISION }}-minimal-mount-${{ env.CCACHE_HIDE_TAG }}-${{ env.CCACHE_SOURCE_FINGERPRINT }}
+          restore-keys: |
+            ccache-kebab-v3-${{ env.CLANG_REVISION }}-minimal-mount-${{ env.CCACHE_HIDE_TAG }}-
+
+      - name: Restore extended-stat ccache
+        id: cache-ccache-extended-stat
+        if: ${{ env.USE_CCACHE == 'true' && env.ENABLE_SUSFS == 'true' && env.PROFILE == 'extended-stat' }}
+        uses: actions/cache/restore@v4
+        with:
+          path: .ccache/extended-stat-${{ env.CCACHE_HIDE_TAG }}
+          key: ccache-kebab-v3-${{ env.CLANG_REVISION }}-extended-stat-${{ env.CCACHE_HIDE_TAG }}-${{ env.CCACHE_SOURCE_FINGERPRINT }}
+          restore-keys: |
+            ccache-kebab-v3-${{ env.CLANG_REVISION }}-extended-stat-${{ env.CCACHE_HIDE_TAG }}-
+
+      - name: Restore extended-full ccache
+        id: cache-ccache-extended-full
+        if: ${{ env.USE_CCACHE == 'true' && env.ENABLE_SUSFS == 'true' && env.PROFILE == 'extended-full' }}
+        uses: actions/cache/restore@v4
+        with:
+          path: .ccache/extended-full-${{ env.CCACHE_HIDE_TAG }}
+          key: ccache-kebab-v3-${{ env.CLANG_REVISION }}-extended-full-${{ env.CCACHE_HIDE_TAG }}-${{ env.CCACHE_SOURCE_FINGERPRINT }}
+          restore-keys: |
+            ccache-kebab-v3-${{ env.CLANG_REVISION }}-extended-full-${{ env.CCACHE_HIDE_TAG }}-
+
+      - name: Configure stage-scoped ccache
+        if: ${{ env.USE_CCACHE == 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          stages=(baseline)
+          if test "$ENABLE_SUSFS" = "true"; then
+            stages+=("smoke-$CCACHE_HIDE_TAG")
+            if test "$PROFILE" != smoke; then
+              stages+=("minimal-mount-$CCACHE_HIDE_TAG")
+            fi
+            if test "$PROFILE" = extended-stat; then
+              stages+=("extended-stat-$CCACHE_HIDE_TAG")
+            fi
+            if test "$PROFILE" = extended-full; then
+              stages+=("extended-full-$CCACHE_HIDE_TAG")
+            fi
+          else
+            stages+=("selected-$CCACHE_HIDE_TAG")
+          fi
+
+          mkdir -p audit
+          printf '%s\n' "${stages[@]}" > audit/ccache-stages.txt
+          for stage in "${stages[@]}"; do
+            cache_dir="$GITHUB_WORKSPACE/.ccache/$stage"
+            mkdir -p "$cache_dir"
+            CCACHE_DIR="$cache_dir" ccache --set-config=max_size=800M
+            CCACHE_DIR="$cache_dir" ccache --set-config=compression=true
+            CCACHE_DIR="$cache_dir" ccache --zero-stats
+          done
+
+      - name: Record ccache restore provenance
+        if: ${{ env.USE_CCACHE == 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "schema=ccache-v3"
+            echo "source_fingerprint=$CCACHE_SOURCE_FINGERPRINT"
+            echo "baseline_hit=${{ steps.cache-ccache-baseline.outputs.cache-hit }}"
+            echo "baseline_matched_key=${{ steps.cache-ccache-baseline.outputs.cache-matched-key }}"
+            echo "selected_hit=${{ steps.cache-ccache-selected.outputs.cache-hit }}"
+            echo "selected_matched_key=${{ steps.cache-ccache-selected.outputs.cache-matched-key }}"
+            echo "smoke_hit=${{ steps.cache-ccache-smoke.outputs.cache-hit }}"
+            echo "smoke_matched_key=${{ steps.cache-ccache-smoke.outputs.cache-matched-key }}"
+            echo "minimal_hit=${{ steps.cache-ccache-minimal.outputs.cache-hit }}"
+            echo "minimal_matched_key=${{ steps.cache-ccache-minimal.outputs.cache-matched-key }}"
+            echo "extended_stat_hit=${{ steps.cache-ccache-extended-stat.outputs.cache-hit }}"
+            echo "extended_stat_matched_key=${{ steps.cache-ccache-extended-stat.outputs.cache-matched-key }}"
+            echo "extended_full_hit=${{ steps.cache-ccache-extended-full.outputs.cache-hit }}"
+            echo "extended_full_matched_key=${{ steps.cache-ccache-extended-full.outputs.cache-matched-key }}"
+          } > audit/ccache-restore.txt
 
       - name: Build baseline, smoke, and selected profile
         shell: bash
@@ -988,20 +1217,16 @@ jobs:
           )"
           export KBUILD_BUILD_TIMESTAMP="@$SOURCE_DATE_EPOCH"
           export KBUILD_BUILD_VERSION=1
-          if test "$USE_CCACHE" = "true"; then
-            export CCACHE_DIR="$GITHUB_WORKSPACE/.ccache"
-            export CCACHE_MAXSIZE=8G
-            export CCACHE_COMPRESS=1
-          fi
-
           build_kernel() {
             local tree="$1"
             local out="$2"
             local log="$3"
+            local ccache_stage="$4"
 
             cd "$GITHUB_WORKSPACE/$tree"
             set +e
             if test "$USE_CCACHE" = "true"; then
+              CCACHE_DIR="$GITHUB_WORKSPACE/.ccache/$ccache_stage" \
               make -j"$(nproc --all)" O="$out" ARCH=arm64 \
                 LLVM=1 LLVM_IAS=1 \
                 CC="ccache clang" \
@@ -1025,27 +1250,30 @@ jobs:
           }
 
           build_kernel kernel_baseline out-baseline \
-            audit/build-baseline.log
+            audit/build-baseline.log baseline
           if test "$ENABLE_SUSFS" = "true"; then
             build_kernel kernel_experiment out-smoke \
-              audit/build-smoke.log
+              audit/build-smoke.log "smoke-$CCACHE_HIDE_TAG"
             if test "$PROFILE" = minimal-mount ||
                test "$PROFILE" = extended-stat ||
                test "$PROFILE" = extended-full; then
               build_kernel kernel_experiment out-minimal-mount \
-                audit/build-minimal-mount.log
+                audit/build-minimal-mount.log \
+                "minimal-mount-$CCACHE_HIDE_TAG"
             fi
             if test "$PROFILE" = extended-stat; then
               build_kernel kernel_experiment out-extended-stat \
-                audit/build-extended-stat.log
+                audit/build-extended-stat.log \
+                "extended-stat-$CCACHE_HIDE_TAG"
             fi
             if test "$PROFILE" = extended-full; then
               build_kernel kernel_experiment out-extended-full \
-                audit/build-extended-full.log
+                audit/build-extended-full.log \
+                "extended-full-$CCACHE_HIDE_TAG"
             fi
           else
             build_kernel kernel_experiment out-selected \
-              audit/build-selected.log
+              audit/build-selected.log "selected-$CCACHE_HIDE_TAG"
           fi
 
       - name: Record ccache statistics
@@ -1053,16 +1281,69 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          export CCACHE_DIR="$GITHUB_WORKSPACE/.ccache"
           mkdir -p audit
-          ccache -s | tee audit/ccache-stats.txt
+          {
+            echo "## ccache stage statistics"
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
+          while IFS= read -r stage; do
+            stats_file="audit/ccache-stats-$stage.txt"
+            CCACHE_DIR="$GITHUB_WORKSPACE/.ccache/$stage" \
+              ccache --show-stats --verbose | tee "$stats_file"
+            {
+              echo "### $stage"
+              echo '```text'
+              cat "$stats_file"
+              echo '```'
+              echo
+            } >> "$GITHUB_STEP_SUMMARY"
+          done < audit/ccache-stages.txt
 
-      - name: Save ccache
-        if: ${{ env.USE_CCACHE == 'true' && steps.cache-ccache.outputs.cache-hit != 'true' }}
+      - name: Save baseline ccache
+        if: >-
+          ${{ env.USE_CCACHE == 'true' &&
+              steps.cache-ccache-baseline.outputs.cache-hit != 'true' &&
+              (github.event_name != 'pull_request' ||
+               (env.ENABLE_SUSFS != 'true' && env.ENABLE_SELINUX_HIDE != 'true')) }}
         uses: actions/cache/save@v4
         with:
-          path: .ccache
-          key: ccache-kebab-${{ hashFiles('patches/*', '.github/workflows/build-sukisu-ultra.yml') }}-${{ env.KERNEL_COMMIT }}-${{ env.SUKISU_COMMIT }}-${{ env.SUKISU_DRIVER_VERSION }}
+          path: .ccache/baseline
+          key: ${{ steps.cache-ccache-baseline.outputs.cache-primary-key }}
+
+      - name: Save selected ccache
+        if: ${{ env.USE_CCACHE == 'true' && env.ENABLE_SUSFS != 'true' && steps.cache-ccache-selected.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v4
+        with:
+          path: .ccache/selected-${{ env.CCACHE_HIDE_TAG }}
+          key: ${{ steps.cache-ccache-selected.outputs.cache-primary-key }}
+
+      - name: Save smoke ccache
+        if: ${{ env.USE_CCACHE == 'true' && env.ENABLE_SUSFS == 'true' && steps.cache-ccache-smoke.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v4
+        with:
+          path: .ccache/smoke-${{ env.CCACHE_HIDE_TAG }}
+          key: ${{ steps.cache-ccache-smoke.outputs.cache-primary-key }}
+
+      - name: Save minimal-mount ccache
+        if: ${{ env.USE_CCACHE == 'true' && env.ENABLE_SUSFS == 'true' && env.PROFILE != 'smoke' && steps.cache-ccache-minimal.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v4
+        with:
+          path: .ccache/minimal-mount-${{ env.CCACHE_HIDE_TAG }}
+          key: ${{ steps.cache-ccache-minimal.outputs.cache-primary-key }}
+
+      - name: Save extended-stat ccache
+        if: ${{ env.USE_CCACHE == 'true' && env.ENABLE_SUSFS == 'true' && env.PROFILE == 'extended-stat' && steps.cache-ccache-extended-stat.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v4
+        with:
+          path: .ccache/extended-stat-${{ env.CCACHE_HIDE_TAG }}
+          key: ${{ steps.cache-ccache-extended-stat.outputs.cache-primary-key }}
+
+      - name: Save extended-full ccache
+        if: ${{ env.USE_CCACHE == 'true' && env.ENABLE_SUSFS == 'true' && env.PROFILE == 'extended-full' && steps.cache-ccache-extended-full.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v4
+        with:
+          path: .ccache/extended-full-${{ env.CCACHE_HIDE_TAG }}
+          key: ${{ steps.cache-ccache-extended-full.outputs.cache-primary-key }}
 
       - name: Audit warnings, symbols, configuration, and Image growth
         shell: bash
@@ -1495,6 +1776,7 @@ jobs:
           else
             expected_files="$RUNNER_TEMP/baseline-hook-files.expected"
           fi
+          expected_files="$expected_files $RUNNER_TEMP/reproducible-kheaders-files.expected"
           if test "$ENABLE_SELINUX_HIDE" = "true"; then
             expected_files="$expected_files $RUNNER_TEMP/selinux-hide-kernel-files.expected"
           fi
@@ -1853,7 +2135,7 @@ jobs:
           name: ${{ env.KERNEL_ARTIFACT_NAME }}
           path: artifacts/kernel
           if-no-files-found: error
-          retention-days: ${{ inputs.build_channel == 'candidate' && 30 || 7 }}
+          retention-days: ${{ env.BUILD_CHANNEL == 'approved' && 7 || 30 }}
 
       - name: Upload pinned v2.2 userspace test tool
         if: ${{ env.ENABLE_SUSFS == 'true' }}
@@ -1862,4 +2144,4 @@ jobs:
           name: ${{ env.TOOL_ARTIFACT_NAME }}
           path: artifacts/tool
           if-no-files-found: error
-          retention-days: ${{ inputs.build_channel == 'candidate' && 30 || 7 }}
+          retention-days: ${{ env.BUILD_CHANNEL == 'approved' && 7 || 30 }}

@@ -1,0 +1,13 @@
+diff --git a/kernel/gen_kheaders.sh b/kernel/gen_kheaders.sh
+--- a/kernel/gen_kheaders.sh
++++ b/kernel/gen_kheaders.sh
+@@ -71,6 +71,8 @@ find $cpio_dir -type f -print0 |
+ 	xargs -0 -P8 -n1 perl -pi -e 'BEGIN {undef $/;}; s/\/\*((?!SPDX).)*?\*\///smg;'
+ 
+-tar -Jcf $tarfile -C $cpio_dir/ . > /dev/null
++tar --sort=name --mtime="@${SOURCE_DATE_EPOCH:-0}" \
++	--owner=0 --group=0 --numeric-owner \
++	-Jcf $tarfile -C $cpio_dir/ . > /dev/null
+ 
+ echo "$src_files_md5" >  kernel/kheaders.md5
+ echo "$obj_files_md5" >> kernel/kheaders.md5
