@@ -9,7 +9,7 @@ non-SUSFS baseline is preserved at `legacy@1bc3fb3`; the historical
 - LineageOS kernel (`lineage-24.0`, currently identical to `lineage-23.2`):
   `4238ee49a84bd418c8515c297563bb29f95ab40b`
 - SukiSU Ultra `builtin`:
-  `b1d534bc41941b2c818d7a1a1dac341e4aabfc2d`
+  `5a2bb7e5813002ccaabe02fa864cfb2dde6b5109`
 - Official SUSFS v2.2 source:
   `8eade9cd4aed3efddc9ff30b2e48d2d9667ad77d`
 - Exact-base SM8250 v2.1 placement reference:
