@@ -63,7 +63,7 @@ jobs:
             )"
             if test "$approved_count" -lt 1; then
               echo "::error::This exact candidate still needs the manual phone-test approval."
-              echo "Run the 'Approve kernel candidate' workflow after testing the CANDIDATE package."
+              echo "After phone testing, run scripts/approve-tested-candidate.ps1; the manual approval form is only a fallback."
               exit 1
             fi
             echo "A phone-test approval exists for this exact PR head."

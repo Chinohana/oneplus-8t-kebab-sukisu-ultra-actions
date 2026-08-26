@@ -1,22 +1,24 @@
-name: Approve kernel candidate
+name: Approve kernel candidate (manual fallback)
+
+run-name: Manual fallback approval for candidate PR #${{ inputs.pr_number }}
 
 on:
   workflow_dispatch:
     inputs:
       pr_number:
-        description: Candidate PR number
+        description: Fallback only; normally use scripts/approve-tested-candidate.ps1
         required: true
         type: string
       build_fingerprint:
-        description: 64-character build fingerprint from candidate-metadata
+        description: Fallback only; auto-collected by the approval script
         required: true
         type: string
       package_sha256:
-        description: SHA-256 of the tested extended-full + SELinux-hide CANDIDATE ZIP
+        description: Fallback only; auto-computed by the approval script
         required: true
         type: string
       rom_build_fingerprint:
-        description: Current phone ROM build fingerprint (adb shell getprop ro.build.fingerprint)
+        description: Fallback only; auto-read from ADB by the approval script
         required: true
         type: string
 
