@@ -151,8 +151,13 @@ Image 大小。内核、SukiSU、SUSFS、Clang 和 AnyKernel3 都使用固定提
 3. 检查开机、ADB、root、加密存储、SELinux Enforcing 和主要硬件；
 4. 检查 SUSFS，并来回开关一次 SELinux hide；
 5. 确认 dmesg 与 pstore 没有 panic、oops、BUG、UAF 或 lockup；
-6. 测试完全通过后，手动运行 **Approve kernel candidate**，填写 PR 编号、
-   构建指纹、已测试包 SHA-256 和手机当前 ROM build fingerprint。
+6. 测试完全通过后，在 GitHub Actions 中运行 **Approve kernel candidate**，勾选
+   唯一的真机测试确认项。云端会自动定位唯一开放且构建成功的候选 PR，下载精确
+   产物，并重新计算构建指纹与 ZIP SHA-256；不再要求手工复制任何编号或哈希。
+
+GitHub 云端无法访问物理手机，因此不会假装“自动读取”手机 ROM 指纹。审批记录
+改为如实保存操作者、候选提交、云端构建、自动核验的包哈希和真机测试声明。
+审批工作流不会连接、刷写、重启或以任何方式修改手机。
 
 批准记录只对那个 PR 的那次内容有效。内核、补丁、工具版本或构建脚本中任何
 一项改变，都必须重新编译并重新真机测试。最终仍需要人工审核并点击合并。
