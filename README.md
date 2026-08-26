@@ -171,6 +171,10 @@ Image 大小。内核、SukiSU、SUSFS、Clang 和 AnyKernel3 都使用固定提
   `main` 分支（v4.x）是新一代架构，`CONFIG_KSU` 硬依赖 `CONFIG_KPROBES`
   且使用运行时 syscall 打补丁与 LSM Hook，与本项目"KPM/kprobes 关闭、
   禁止运行时打补丁"的约束冲突，因此不用于本仓库。
+- **AnyKernel3**：固定提交 `af770f7` 仅作为经过审计的 ZIP 打包基础。本项目
+  仍把默认 `dump_boot` / `write_boot` 流程改为 `split_boot` / `flash_boot`，
+  只替换 `boot` 分区中的内核 `Image`，并由工作流检查不存在 ramdisk 修改命令；
+  上游新增的 vendor ramdisk 解包能力不会在本项目包中启用。
 
 本仓库目前只支持 LineageOS 23.2，不为 LineageOS 24.0 产出正式包。将来手机
 正式升级到 24.0 后，会建立一套新的内核书签并重新完成首次真机批准。
