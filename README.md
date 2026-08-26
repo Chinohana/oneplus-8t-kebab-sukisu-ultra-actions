@@ -151,8 +151,19 @@ Image 大小。内核、SukiSU、SUSFS、Clang 和 AnyKernel3 都使用固定提
 3. 检查开机、ADB、root、加密存储、SELinux Enforcing 和主要硬件；
 4. 检查 SUSFS，并来回开关一次 SELinux hide；
 5. 确认 dmesg 与 pstore 没有 panic、oops、BUG、UAF 或 lockup；
-6. 测试完全通过后，手动运行 **Approve kernel candidate**，填写 PR 编号、
-   构建指纹、已测试包 SHA-256 和手机当前 ROM build fingerprint。
+6. 测试完全通过并保持手机通过 ADB 连接后，在仓库目录运行：
+
+   ```powershell
+   .\scripts\approve-tested-candidate.ps1 -PullRequest 15
+   ```
+
+   将 `15` 换成候选 PR 编号。脚本会自动定位该 PR 的成功构建，下载并核对精确
+   候选产物，计算构建指纹和 ZIP SHA-256，并通过 ADB 读取手机当前 ROM build
+   fingerprint。核对摘要后只需输入一次 `APPROVE`。如果当前分支正是候选 PR
+   分支，也可以省略 `-PullRequest`。使用 `-DryRun` 可只检查而不提交批准。
+
+网页中的 **Approve kernel candidate** 四字段表单仅作为脚本不可用时的手动兜底；
+正常审批不再需要复制这些长字符串。脚本不会刷机、重启、切换槽位或改动手机。
 
 批准记录只对那个 PR 的那次内容有效。内核、补丁、工具版本或构建脚本中任何
 一项改变，都必须重新编译并重新真机测试。最终仍需要人工审核并点击合并。
