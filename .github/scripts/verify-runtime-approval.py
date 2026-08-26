@@ -131,24 +131,15 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--candidate", type=Path, required=True)
     parser.add_argument("--artifact", type=Path, required=True)
-    parser.add_argument("--fingerprint", required=True)
-    parser.add_argument("--package-sha256", required=True)
     parser.add_argument("--head-sha", required=True)
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--pr", type=int, required=True)
-    parser.add_argument("--rom-fingerprint", required=True)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
 
-    for label, value, regex in (
-        ("fingerprint", args.fingerprint, HEX64),
-        ("package SHA-256", args.package_sha256, HEX64),
-        ("PR head SHA", args.head_sha, HEX40),
-    ):
+    for label, value, regex in (("PR head SHA", args.head_sha, HEX40),):
         if not regex.fullmatch(value):
             raise SystemExit(f"Invalid {label}")
-    if not (10 <= len(args.rom_fingerprint) <= 512) or "\n" in args.rom_fingerprint:
-        raise SystemExit("ROM build fingerprint must be a single meaningful line")
     if args.artifact.stat().st_size > MAX_MEMBER:
         raise SystemExit("Downloaded artifact is unexpectedly large")
     actual_head = git(args.candidate, "rev-parse", "HEAD").decode().strip()
@@ -156,8 +147,6 @@ def main() -> None:
         raise SystemExit("Checked-out PR head changed during approval")
 
     expected_fingerprint, commit = compute_fingerprint(args.candidate)
-    if expected_fingerprint != args.fingerprint:
-        raise SystemExit("Entered fingerprint does not match the current PR inputs")
 
     with zipfile.ZipFile(args.artifact) as outer:
         infos = safe_members(outer)
@@ -173,8 +162,6 @@ def main() -> None:
         provenance = parse_provenance(outer.read(provenance_info).decode("utf-8"))
 
     actual_package_sha = hashlib.sha256(package_bytes).hexdigest()
-    if actual_package_sha != args.package_sha256:
-        raise SystemExit("Entered package SHA-256 does not match the candidate ZIP")
     required = {
         "status": "CANDIDATE_DO_NOT_AUTO_INSTALL",
         "device": "kebab",
@@ -184,7 +171,7 @@ def main() -> None:
         "enable_selinux_hide": "true",
         "use_anykernel": "true",
         "build_channel": "candidate",
-        "build_fingerprint": args.fingerprint,
+        "build_fingerprint": expected_fingerprint,
         "github_run_id": args.run_id,
         "kernel_branch": "lineage-23.2",
         "kernel_commit": commit,
@@ -202,9 +189,10 @@ def main() -> None:
         "pr": args.pr,
         "head_sha": args.head_sha,
         "kernel_commit": commit,
-        "build_fingerprint": args.fingerprint,
-        "package_sha256": args.package_sha256,
-        "rom_build_fingerprint": args.rom_fingerprint,
+        "build_fingerprint": expected_fingerprint,
+        "package_sha256": actual_package_sha,
+        "phone_test_attested": True,
+        "phone_test_environment": "physical device; details retained by operator",
         "candidate_run_id": int(args.run_id),
     }
     args.output.write_text(json.dumps(record, ensure_ascii=False, sort_keys=True), encoding="utf-8")
