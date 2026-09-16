@@ -739,20 +739,21 @@ jobs:
 
           cmp \
             <(sed -e 's/\r$//' -e 's/[[:space:]]*$//' \
-              susfs_reference/kernel_patches/include/linux/susfs_def.h) \
+                susfs_reference/kernel_patches/include/linux/susfs_def.h | \
+              awk 'NF { blank=0; print; next } !blank { print; blank=1 }') \
             <(sed \
-              -e '/^#define TIF_PROC_NO_SU 34$/d' \
-              -e '/^#define TIF_PROC_UMOUNTED_FOR_ZYGOTE_NEXT 35$/d' \
-              -e '/^static inline void susfs_clear_current_proc_umounted(void) {$/,/^}$/d' \
-              -e '/^static inline bool susfs_is_current_proc_umounted_for_zygote_next(void) {$/,/^}$/d' \
-              -e '/^static inline void susfs_set_current_proc_umounted_for_zygote_next(void) {$/,/^}$/d' \
-              -e '/^static inline void susfs_clear_current_proc_umounted_for_zygote_next(void) {$/,/^}$/d' \
-              -e '/^static inline bool susfs_is_current_proc_no_su(void) {$/,/^}$/d' \
-              -e '/^static inline void susfs_set_current_proc_no_su(void) {$/,/^}$/d' \
-              -e '/^static inline void susfs_clear_current_proc_no_su(void) {$/,/^}$/d' \
-              -e 's/\r$//' -e 's/[[:space:]]*$//' \
-              -e '/^$/N;/^\n$/D' \
-              kernel_experiment/include/linux/susfs_def.h)
+                -e '/^#define TIF_PROC_NO_SU 34$/d' \
+                -e '/^#define TIF_PROC_UMOUNTED_FOR_ZYGOTE_NEXT 35$/d' \
+                -e '/^static inline void susfs_clear_current_proc_umounted(void) {$/,/^}$/d' \
+                -e '/^static inline bool susfs_is_current_proc_umounted_for_zygote_next(void) {$/,/^}$/d' \
+                -e '/^static inline void susfs_set_current_proc_umounted_for_zygote_next(void) {$/,/^}$/d' \
+                -e '/^static inline void susfs_clear_current_proc_umounted_for_zygote_next(void) {$/,/^}$/d' \
+                -e '/^static inline bool susfs_is_current_proc_no_su(void) {$/,/^}$/d' \
+                -e '/^static inline void susfs_set_current_proc_no_su(void) {$/,/^}$/d' \
+                -e '/^static inline void susfs_clear_current_proc_no_su(void) {$/,/^}$/d' \
+                -e 's/\r$//' -e 's/[[:space:]]*$//' \
+                kernel_experiment/include/linux/susfs_def.h | \
+              awk 'NF { blank=0; print; next } !blank { print; blank=1 }')
 
           grep -Fq \
             'Linux 4.19 delivers the raw child name through fsnotify_ops.handle_event.' \
