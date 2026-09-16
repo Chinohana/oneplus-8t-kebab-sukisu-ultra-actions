@@ -714,10 +714,44 @@ jobs:
               susfs_reference/kernel_patches/include/linux/susfs.h) \
             <(sed -e 's/\r$//' -e 's/[[:space:]]*$//' \
               kernel_experiment/include/linux/susfs.h)
+          for definition in \
+            '#define TIF_PROC_NO_SU 34' \
+            '#define TIF_PROC_UMOUNTED_FOR_ZYGOTE_NEXT 35'; do
+            grep -Fqx "$definition" \
+              kernel_experiment/include/linux/susfs_def.h
+          done
+          for helper in \
+            susfs_clear_current_proc_umounted \
+            susfs_is_current_proc_umounted_for_zygote_next \
+            susfs_set_current_proc_umounted_for_zygote_next \
+            susfs_clear_current_proc_umounted_for_zygote_next \
+            susfs_is_current_proc_no_su \
+            susfs_set_current_proc_no_su \
+            susfs_clear_current_proc_no_su; do
+            grep -Fq "static inline" \
+              kernel_experiment/include/linux/susfs_def.h
+            grep -Fq "${helper}(void)" \
+              kernel_experiment/include/linux/susfs_def.h
+          done
+          grep -Fq \
+            'if (susfs_is_current_proc_umounted_for_zygote_next()) {' \
+            kernel_experiment/fs/namespace.c
+
           cmp \
             <(sed -e 's/\r$//' -e 's/[[:space:]]*$//' \
               susfs_reference/kernel_patches/include/linux/susfs_def.h) \
-            <(sed -e 's/\r$//' -e 's/[[:space:]]*$//' \
+            <(sed \
+              -e '/^#define TIF_PROC_NO_SU 34$/d' \
+              -e '/^#define TIF_PROC_UMOUNTED_FOR_ZYGOTE_NEXT 35$/d' \
+              -e '/^static inline void susfs_clear_current_proc_umounted(void) {$/,/^}$/d' \
+              -e '/^static inline bool susfs_is_current_proc_umounted_for_zygote_next(void) {$/,/^}$/d' \
+              -e '/^static inline void susfs_set_current_proc_umounted_for_zygote_next(void) {$/,/^}$/d' \
+              -e '/^static inline void susfs_clear_current_proc_umounted_for_zygote_next(void) {$/,/^}$/d' \
+              -e '/^static inline bool susfs_is_current_proc_no_su(void) {$/,/^}$/d' \
+              -e '/^static inline void susfs_set_current_proc_no_su(void) {$/,/^}$/d' \
+              -e '/^static inline void susfs_clear_current_proc_no_su(void) {$/,/^}$/d' \
+              -e 's/\r$//' -e 's/[[:space:]]*$//' \
+              -e '/^$/N;/^\n$/D' \
               kernel_experiment/include/linux/susfs_def.h)
 
           grep -Fq \
