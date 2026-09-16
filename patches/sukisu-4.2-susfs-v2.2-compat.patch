@@ -12,7 +12,7 @@ diff --git a/fs/exec.c b/fs/exec.c
 diff --git a/fs/namespace.c b/fs/namespace.c
 --- a/fs/namespace.c
 +++ b/fs/namespace.c
-@@ -747,10 +747,22 @@ struct mount *__lookup_mnt(struct vfsmount *mnt, struct dentry *dentry)
+@@ -747,9 +747,21 @@ struct mount *__lookup_mnt(struct vfsmount *mnt, struct dentry *dentry)
  {
  	struct hlist_head *head = m_hash(mnt, dentry);
  	struct mount *p;
@@ -65,7 +65,7 @@ diff --git a/include/linux/susfs_def.h b/include/linux/susfs_def.h
 +#define TIF_PROC_NO_SU 34
 +#define TIF_PROC_UMOUNTED_FOR_ZYGOTE_NEXT 35
  
-@@ -99,12 +101,40 @@ static inline bool susfs_is_current_proc_umounted(void) {
+@@ -99,11 +101,39 @@ static inline bool susfs_is_current_proc_umounted(void) {
  static inline void susfs_set_current_proc_umounted(void) {
  	set_thread_flag(TIF_PROC_UMOUNTED);
  }
