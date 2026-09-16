@@ -198,6 +198,7 @@ jobs:
 
           if test "$ENABLE_SUSFS" = "true"; then
             test -s "$SUSFS_PATCH"
+            test -s "$SUSFS_SUKISU_42_COMPAT_PATCH"
           fi
           test -s "$SUKISU_COMPAT_PATCH"
           test -s "$BASELINE_HOOK_PATCH"
@@ -390,6 +391,22 @@ jobs:
               echo "::error::Unsafe path found in the experimental patch."
               exit 1
             fi
+
+            cat > "$RUNNER_TEMP/susfs-sukisu-42-compat-files.expected" <<'EOF'
+          fs/exec.c
+          fs/namespace.c
+          fs/open.c
+          fs/stat.c
+          include/linux/susfs_def.h
+          EOF
+            sed -i 's/^          //' \
+              "$RUNNER_TEMP/susfs-sukisu-42-compat-files.expected"
+            git apply --numstat "$SUSFS_SUKISU_42_COMPAT_PATCH" |
+              awk -F '\t' '{print $3}' |
+              LC_ALL=C sort -u \
+              > "$RUNNER_TEMP/susfs-sukisu-42-compat-files.from-patch"
+            diff -u "$RUNNER_TEMP/susfs-sukisu-42-compat-files.expected" \
+              "$RUNNER_TEMP/susfs-sukisu-42-compat-files.from-patch"
           fi
 
           cat > "$RUNNER_TEMP/baseline-hook-files.expected" <<'EOF'
@@ -458,7 +475,7 @@ jobs:
           cp "$RUNNER_TEMP/"*.expected audit/
           cp "$RUNNER_TEMP/"*.from-patch audit/
           if test "$ENABLE_SUSFS" = "true"; then
-            patch_hash_list="$SUSFS_PATCH "
+            patch_hash_list="$SUSFS_PATCH $SUSFS_SUKISU_42_COMPAT_PATCH "
           else
             patch_hash_list=""
           fi
@@ -570,6 +587,11 @@ jobs:
               "$GITHUB_WORKSPACE/$SUSFS_PATCH"
             git -C kernel_experiment add -N \
               fs/susfs.c include/linux/susfs.h include/linux/susfs_def.h
+            git -C kernel_experiment apply --check \
+              --whitespace=error-all \
+              "$GITHUB_WORKSPACE/$SUSFS_SUKISU_42_COMPAT_PATCH"
+            git -C kernel_experiment apply --whitespace=error-all \
+              "$GITHUB_WORKSPACE/$SUSFS_SUKISU_42_COMPAT_PATCH"
           else
             git -C kernel_experiment apply --check \
               --whitespace=error-all \
