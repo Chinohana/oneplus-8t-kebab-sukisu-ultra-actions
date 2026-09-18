@@ -697,7 +697,7 @@ index 13d70db567e060c8877b9b332b38beb3ad0a7a3f..6d7c8e7e0cd07a764b0944a2ecd70fdd
 +
 +		name = getname_flags(filename, lookup_flags, NULL);
 +#ifdef CONFIG_KSU
-+		if (likely(susfs_is_current_proc_umounted()) ||
++		if (likely(susfs_is_current_proc_no_su()) ||
 +		    !ksu_su_compat_enabled)
 +			goto orig_flow;
 +
@@ -976,7 +976,7 @@ index 376543199b5a20b3ad976c584566bf921b601227..f5b3494a42564b5c84cc6ed317a85e1d
 +
 +		name = getname_flags(filename, lookup_flags, NULL);
 +#ifdef CONFIG_KSU
-+		if (likely(susfs_is_current_proc_umounted()) ||
++		if (likely(susfs_is_current_proc_no_su()) ||
 +		    !ksu_su_compat_enabled)
 +			goto orig_flow;
 +

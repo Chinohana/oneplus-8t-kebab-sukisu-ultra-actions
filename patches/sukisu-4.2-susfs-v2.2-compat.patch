@@ -34,28 +34,6 @@ diff --git a/fs/namespace.c b/fs/namespace.c
  			return p;
  	return NULL;
  }
-diff --git a/fs/open.c b/fs/open.c
---- a/fs/open.c
-+++ b/fs/open.c
-@@ -377,6 +377,6 @@ long do_faccessat(int dfd, const char __user *filename, int mode)
- #ifdef CONFIG_KSU
- #ifdef CONFIG_KSU_SUSFS
--	if (likely(susfs_is_current_proc_umounted()) ||
-+	if (likely(susfs_is_current_proc_no_su()) ||
- 	    !ksu_su_compat_enabled)
- 		goto orig_flow;
- 
-diff --git a/fs/stat.c b/fs/stat.c
---- a/fs/stat.c
-+++ b/fs/stat.c
-@@ -190,6 +190,6 @@ int vfs_statx(int dfd, const char __user *filename, int flags,
- #ifdef CONFIG_KSU
- #ifdef CONFIG_KSU_SUSFS
--	if (likely(susfs_is_current_proc_umounted()) ||
-+	if (likely(susfs_is_current_proc_no_su()) ||
- 	    !ksu_su_compat_enabled)
- 		goto orig_flow;
- 
 diff --git a/include/linux/susfs_def.h b/include/linux/susfs_def.h
 --- a/include/linux/susfs_def.h
 +++ b/include/linux/susfs_def.h
