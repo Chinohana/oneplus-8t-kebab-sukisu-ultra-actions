@@ -909,12 +909,13 @@ diff --git a/fs/stat.c b/fs/stat.c
 index 376543199b5a20b3ad976c584566bf921b601227..f5b3494a42564b5c84cc6ed317a85e1dfb7f61e5 100644
 --- a/fs/stat.c
 +++ b/fs/stat.c
-@@ -18,6 +18,10 @@
+@@ -18,6 +18,11 @@
  #include <linux/pagemap.h>
  #include <linux/compat.h>
  
 +#ifdef CONFIG_KSU_SUSFS
 +#include <linux/susfs_def.h>
++#include "internal.h"
 +#endif
 +
  #include <linux/uaccess.h>
