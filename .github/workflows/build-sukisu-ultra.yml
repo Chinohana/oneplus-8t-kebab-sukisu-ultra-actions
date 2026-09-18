@@ -822,28 +822,31 @@ jobs:
               'ksu_handle_execveat(&fd'
             require_one_call "$tree/fs/open.c" \
               'ksu_handle_faccessat(&dfd, &filename'
-            require_one_call "$tree/fs/open.c" \
-              'ksu_handle_faccessat(&dfd, &name'
-            require_one_call "$tree/fs/open.c" \
-              'struct filename **filename, int *mode'
             require_one_call "$tree/fs/read_write.c" \
               'ksu_handle_vfs_read(&file'
             require_one_call "$tree/fs/stat.c" \
               'ksu_handle_stat(&dfd, &filename'
-            require_one_call "$tree/fs/stat.c" \
-              'ksu_handle_stat(&dfd, &name'
-            require_one_call "$tree/fs/stat.c" \
-              'struct filename **filename, int *flags'
             require_one_call "$tree/kernel/reboot.c" \
               'ksu_handle_sys_reboot(magic1'
+          done
+
+          if test "$ENABLE_SUSFS" = "true"; then
+            require_one_call kernel_experiment/fs/open.c \
+              'ksu_handle_faccessat(&dfd, &name'
+            require_one_call kernel_experiment/fs/open.c \
+              'struct filename **filename, int *mode'
+            require_one_call kernel_experiment/fs/stat.c \
+              'ksu_handle_stat(&dfd, &name'
+            require_one_call kernel_experiment/fs/stat.c \
+              'struct filename **filename, int *flags'
 
             grep -Fq \
               'int ksu_handle_faccessat(int *dfd, struct filename **filename, int *mode,' \
-              "$tree/KernelSU/kernel/feature/sucompat.h"
+              kernel_experiment/KernelSU/kernel/feature/sucompat.h
             grep -Fq \
               'int ksu_handle_stat(int *dfd, struct filename **filename, int *flags);' \
-              "$tree/KernelSU/kernel/feature/sucompat.h"
-          done
+              kernel_experiment/KernelSU/kernel/feature/sucompat.h
+          fi
 
       - name: Configure baseline, smoke, and selected profile
         shell: bash
