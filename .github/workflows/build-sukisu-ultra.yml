@@ -395,8 +395,6 @@ jobs:
             cat > "$RUNNER_TEMP/susfs-sukisu-42-compat-files.expected" <<'EOF'
           fs/exec.c
           fs/namespace.c
-          fs/open.c
-          fs/stat.c
           include/linux/susfs_def.h
           EOF
             sed -i 's/^          //' \
