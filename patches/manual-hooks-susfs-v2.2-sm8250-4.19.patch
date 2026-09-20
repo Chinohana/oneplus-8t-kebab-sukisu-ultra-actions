@@ -655,13 +655,18 @@ index 13d70db567e060c8877b9b332b38beb3ad0a7a3f..6d7c8e7e0cd07a764b0944a2ecd70fdd
  #include "internal.h"
  #include <trace/hooks/syscall_check.h>
  
-@@ -349,6 +353,15 @@ SYSCALL_DEFINE4(fallocate, int, fd, int, mode, loff_t, offset, loff_t, len)
+@@ -349,6 +353,20 @@ SYSCALL_DEFINE4(fallocate, int, fd, int, mode, loff_t, offset, loff_t, len)
  	return ksys_fallocate(fd, mode, offset, len);
  }
  
 +#ifdef CONFIG_KSU
++#ifdef CONFIG_KSU_SUSFS
++extern int ksu_handle_faccessat(int *dfd,
++		struct filename **filename, int *mode, int *flags);
++#else
 +extern int ksu_handle_faccessat(int *dfd,
 +		const char __user **filename_user, int *mode, int *flags);
++#endif
 +#ifdef CONFIG_KSU_SUSFS
 +extern bool ksu_su_compat_enabled __read_mostly;
 +extern bool __ksu_is_allow_uid_for_current(uid_t uid);
@@ -671,29 +676,44 @@ index 13d70db567e060c8877b9b332b38beb3ad0a7a3f..6d7c8e7e0cd07a764b0944a2ecd70fdd
  /*
   * access() needs to use the real uid/gid, not the effective uid/gid.
   * We do this by temporarily clearing all FS-related capabilities and
-@@ -364,6 +377,22 @@ long do_faccessat(int dfd, const char __user *filename, int mode)
+@@ -364,6 +382,10 @@ long do_faccessat(int dfd, const char __user *filename, int mode)
  	int res;
  	unsigned int lookup_flags = LOOKUP_FOLLOW;
  
-+#ifdef CONFIG_KSU
-+#ifdef CONFIG_KSU_SUSFS
-+	if (likely(susfs_is_current_proc_umounted()) ||
-+	    !ksu_su_compat_enabled)
-+		goto orig_flow;
-+
-+	if (!unlikely(__ksu_is_allow_uid_for_current(current_uid().val)))
-+		goto orig_flow;
-+#endif
-+
++#if defined(CONFIG_KSU) && !defined(CONFIG_KSU_SUSFS)
 +	ksu_handle_faccessat(&dfd, &filename, &mode, NULL);
-+#ifdef CONFIG_KSU_SUSFS
-+orig_flow:
-+#endif
 +#endif
 +
  	if (mode & ~S_IRWXO)	/* where's F_OK, X_OK, W_OK, R_OK? */
  		return -EINVAL;
  
+@@ -404,6 +426,26 @@ long do_faccessat(int dfd, const char __user *filename, int mode)
+ 
+ 	old_cred = override_creds(override_cred);
+ retry:
++#ifdef CONFIG_KSU_SUSFS
++	{
++		struct filename *name;
++
++		name = getname_flags(filename, lookup_flags, NULL);
++#ifdef CONFIG_KSU
++		if (likely(susfs_is_current_proc_no_su()) ||
++		    !ksu_su_compat_enabled)
++			goto orig_flow;
++
++		if (!unlikely(__ksu_is_allow_uid_for_current(current_uid().val)))
++			goto orig_flow;
++
++		ksu_handle_faccessat(&dfd, &name, &mode, NULL);
++orig_flow:
++#endif
++		res = filename_lookup(dfd, name, lookup_flags, &path, NULL);
++	}
++#else
+ 	res = user_path_at(dfd, filename, lookup_flags, &path);
++#endif
+ 	if (res)
+ 		goto out;
 diff --git a/fs/proc/fd.c b/fs/proc/fd.c
 index 81882a13212d3dd7d9c5cffb8e12340f7e8362c6..5682bc75a5dce99ab0df06dc7ef54202034eac14 100644
 --- a/fs/proc/fd.c
@@ -889,24 +909,30 @@ diff --git a/fs/stat.c b/fs/stat.c
 index 376543199b5a20b3ad976c584566bf921b601227..f5b3494a42564b5c84cc6ed317a85e1dfb7f61e5 100644
 --- a/fs/stat.c
 +++ b/fs/stat.c
-@@ -18,6 +18,10 @@
+@@ -18,6 +18,11 @@
  #include <linux/pagemap.h>
  #include <linux/compat.h>
  
 +#ifdef CONFIG_KSU_SUSFS
 +#include <linux/susfs_def.h>
++#include "internal.h"
 +#endif
 +
  #include <linux/uaccess.h>
  #include <asm/unistd.h>
  
-@@ -117,6 +121,17 @@ int vfs_getattr(const struct path *path, struct kstat *stat,
+@@ -117,6 +121,22 @@ int vfs_getattr(const struct path *path, struct kstat *stat,
  }
  EXPORT_SYMBOL(vfs_getattr);
  
 +#ifdef CONFIG_KSU
++#ifdef CONFIG_KSU_SUSFS
++extern int ksu_handle_stat(int *dfd,
++		struct filename **filename, int *flags);
++#else
 +extern int ksu_handle_stat(int *dfd,
 +		const char __user **filename_user, int *flags);
++#endif
 +#ifdef CONFIG_KSU_SUSFS
 +extern bool ksu_su_compat_enabled __read_mostly;
 +extern bool __ksu_is_allow_uid_for_current(uid_t uid);
@@ -918,7 +944,7 @@ index 376543199b5a20b3ad976c584566bf921b601227..f5b3494a42564b5c84cc6ed317a85e1d
  /**
   * vfs_statx_fd - Get the enhanced basic attributes by file descriptor
   * @fd: The file descriptor referring to the file of interest
-@@ -142,6 +157,11 @@ int vfs_statx_fd(unsigned int fd, struct kstat *stat,
+@@ -142,6 +162,11 @@ int vfs_statx_fd(unsigned int fd, struct kstat *stat,
  	if (f.file) {
  		error = vfs_getattr(&f.file->f_path, stat,
  				    request_mask, query_flags);
@@ -930,29 +956,44 @@ index 376543199b5a20b3ad976c584566bf921b601227..f5b3494a42564b5c84cc6ed317a85e1d
  		fdput(f);
  	}
  	return error;
-@@ -170,6 +190,22 @@ int vfs_statx(int dfd, const char __user *filename, int flags,
+@@ -170,6 +195,10 @@ int vfs_statx(int dfd, const char __user *filename, int flags,
  	int error = -EINVAL;
  	unsigned int lookup_flags = LOOKUP_FOLLOW | LOOKUP_AUTOMOUNT;
  
-+#ifdef CONFIG_KSU
-+#ifdef CONFIG_KSU_SUSFS
-+	if (likely(susfs_is_current_proc_umounted()) ||
-+	    !ksu_su_compat_enabled)
-+		goto orig_flow;
-+
-+	if (!unlikely(__ksu_is_allow_uid_for_current(current_uid().val)))
-+		goto orig_flow;
-+#endif
-+
++#if defined(CONFIG_KSU) && !defined(CONFIG_KSU_SUSFS)
 +	ksu_handle_stat(&dfd, &filename, &flags);
-+#ifdef CONFIG_KSU_SUSFS
-+orig_flow:
-+#endif
 +#endif
 +
  	if ((flags & ~(AT_SYMLINK_NOFOLLOW | AT_NO_AUTOMOUNT |
  		       AT_EMPTY_PATH | KSTAT_QUERY_FLAGS)) != 0)
  		return -EINVAL;
+@@ -181,6 +210,26 @@ int vfs_statx(int dfd, const char __user *filename, int flags,
+ 		lookup_flags |= LOOKUP_EMPTY;
+ 
+ retry:
++#ifdef CONFIG_KSU_SUSFS
++	{
++		struct filename *name;
++
++		name = getname_flags(filename, lookup_flags, NULL);
++#ifdef CONFIG_KSU
++		if (likely(susfs_is_current_proc_no_su()) ||
++		    !ksu_su_compat_enabled)
++			goto orig_flow;
++
++		if (!unlikely(__ksu_is_allow_uid_for_current(current_uid().val)))
++			goto orig_flow;
++
++		ksu_handle_stat(&dfd, &name, &flags);
++orig_flow:
++#endif
++		error = filename_lookup(dfd, name, lookup_flags, &path, NULL);
++	}
++#else
+ 	error = user_path_at(dfd, filename, lookup_flags, &path);
++#endif
+ 	if (error)
+ 		goto out;
 diff --git a/fs/statfs.c b/fs/statfs.c
 index 29786598c2b5d53ef4be02df7d76c0388673e4db..d708d8123fbd46239b59ce0050e7efd8f426e957 100644
 --- a/fs/statfs.c
