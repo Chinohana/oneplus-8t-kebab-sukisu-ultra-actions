@@ -198,6 +198,7 @@ jobs:
 
           if test "$ENABLE_SUSFS" = "true"; then
             test -s "$SUSFS_PATCH"
+            test -s "$SUSFS_SUKISU_42_COMPAT_PATCH"
           fi
           test -s "$SUKISU_COMPAT_PATCH"
           test -s "$BASELINE_HOOK_PATCH"
@@ -390,6 +391,20 @@ jobs:
               echo "::error::Unsafe path found in the experimental patch."
               exit 1
             fi
+
+            cat > "$RUNNER_TEMP/susfs-sukisu-42-compat-files.expected" <<'EOF'
+          fs/exec.c
+          fs/namespace.c
+          include/linux/susfs_def.h
+          EOF
+            sed -i 's/^          //' \
+              "$RUNNER_TEMP/susfs-sukisu-42-compat-files.expected"
+            git apply --numstat "$SUSFS_SUKISU_42_COMPAT_PATCH" |
+              awk -F '\t' '{print $3}' |
+              LC_ALL=C sort -u \
+              > "$RUNNER_TEMP/susfs-sukisu-42-compat-files.from-patch"
+            diff -u "$RUNNER_TEMP/susfs-sukisu-42-compat-files.expected" \
+              "$RUNNER_TEMP/susfs-sukisu-42-compat-files.from-patch"
           fi
 
           cat > "$RUNNER_TEMP/baseline-hook-files.expected" <<'EOF'
@@ -458,7 +473,7 @@ jobs:
           cp "$RUNNER_TEMP/"*.expected audit/
           cp "$RUNNER_TEMP/"*.from-patch audit/
           if test "$ENABLE_SUSFS" = "true"; then
-            patch_hash_list="$SUSFS_PATCH "
+            patch_hash_list="$SUSFS_PATCH $SUSFS_SUKISU_42_COMPAT_PATCH "
           else
             patch_hash_list=""
           fi
@@ -570,6 +585,11 @@ jobs:
               "$GITHUB_WORKSPACE/$SUSFS_PATCH"
             git -C kernel_experiment add -N \
               fs/susfs.c include/linux/susfs.h include/linux/susfs_def.h
+            git -C kernel_experiment apply --check \
+              --whitespace=error-all \
+              "$GITHUB_WORKSPACE/$SUSFS_SUKISU_42_COMPAT_PATCH"
+            git -C kernel_experiment apply --whitespace=error-all \
+              "$GITHUB_WORKSPACE/$SUSFS_SUKISU_42_COMPAT_PATCH"
           else
             git -C kernel_experiment apply --check \
               --whitespace=error-all \
@@ -692,11 +712,46 @@ jobs:
               susfs_reference/kernel_patches/include/linux/susfs.h) \
             <(sed -e 's/\r$//' -e 's/[[:space:]]*$//' \
               kernel_experiment/include/linux/susfs.h)
+          for definition in \
+            '#define TIF_PROC_NO_SU 34' \
+            '#define TIF_PROC_UMOUNTED_FOR_ZYGOTE_NEXT 35'; do
+            grep -Fqx "$definition" \
+              kernel_experiment/include/linux/susfs_def.h
+          done
+          for helper in \
+            susfs_clear_current_proc_umounted \
+            susfs_is_current_proc_umounted_for_zygote_next \
+            susfs_set_current_proc_umounted_for_zygote_next \
+            susfs_clear_current_proc_umounted_for_zygote_next \
+            susfs_is_current_proc_no_su \
+            susfs_set_current_proc_no_su \
+            susfs_clear_current_proc_no_su; do
+            grep -Fq "static inline" \
+              kernel_experiment/include/linux/susfs_def.h
+            grep -Fq "${helper}(void)" \
+              kernel_experiment/include/linux/susfs_def.h
+          done
+          grep -Fq \
+            'if (susfs_is_current_proc_umounted_for_zygote_next()) {' \
+            kernel_experiment/fs/namespace.c
+
           cmp \
             <(sed -e 's/\r$//' -e 's/[[:space:]]*$//' \
-              susfs_reference/kernel_patches/include/linux/susfs_def.h) \
-            <(sed -e 's/\r$//' -e 's/[[:space:]]*$//' \
-              kernel_experiment/include/linux/susfs_def.h)
+                susfs_reference/kernel_patches/include/linux/susfs_def.h | \
+              awk 'NF { blank=0; print; next } !blank { print; blank=1 }') \
+            <(sed \
+                -e '/^#define TIF_PROC_NO_SU 34$/d' \
+                -e '/^#define TIF_PROC_UMOUNTED_FOR_ZYGOTE_NEXT 35$/d' \
+                -e '/^static inline void susfs_clear_current_proc_umounted(void) {$/,/^}$/d' \
+                -e '/^static inline bool susfs_is_current_proc_umounted_for_zygote_next(void) {$/,/^}$/d' \
+                -e '/^static inline void susfs_set_current_proc_umounted_for_zygote_next(void) {$/,/^}$/d' \
+                -e '/^static inline void susfs_clear_current_proc_umounted_for_zygote_next(void) {$/,/^}$/d' \
+                -e '/^static inline bool susfs_is_current_proc_no_su(void) {$/,/^}$/d' \
+                -e '/^static inline void susfs_set_current_proc_no_su(void) {$/,/^}$/d' \
+                -e '/^static inline void susfs_clear_current_proc_no_su(void) {$/,/^}$/d' \
+                -e 's/\r$//' -e 's/[[:space:]]*$//' \
+                kernel_experiment/include/linux/susfs_def.h | \
+              awk 'NF { blank=0; print; next } !blank { print; blank=1 }')
 
           grep -Fq \
             'Linux 4.19 delivers the raw child name through fsnotify_ops.handle_event.' \
@@ -740,7 +795,7 @@ jobs:
             > audit/susfs-v2.2-to-sm8250-4.19.diff || true
           test -s audit/susfs-v2.2-to-sm8250-4.19.diff
 
-      - name: Audit exactly one manual entry hook
+      - name: Audit manual entry hooks and pathname ABI
         shell: bash
         run: |
           set -euo pipefail
@@ -764,14 +819,32 @@ jobs:
             require_one_call "$tree/fs/exec.c" \
               'ksu_handle_execveat(&fd'
             require_one_call "$tree/fs/open.c" \
-              'ksu_handle_faccessat(&dfd'
+              'ksu_handle_faccessat(&dfd, &filename'
             require_one_call "$tree/fs/read_write.c" \
               'ksu_handle_vfs_read(&file'
             require_one_call "$tree/fs/stat.c" \
-              'ksu_handle_stat(&dfd'
+              'ksu_handle_stat(&dfd, &filename'
             require_one_call "$tree/kernel/reboot.c" \
               'ksu_handle_sys_reboot(magic1'
           done
+
+          if test "$ENABLE_SUSFS" = "true"; then
+            require_one_call kernel_experiment/fs/open.c \
+              'ksu_handle_faccessat(&dfd, &name'
+            require_one_call kernel_experiment/fs/open.c \
+              'struct filename **filename, int *mode'
+            require_one_call kernel_experiment/fs/stat.c \
+              'ksu_handle_stat(&dfd, &name'
+            require_one_call kernel_experiment/fs/stat.c \
+              'struct filename **filename, int *flags'
+
+            grep -Fq \
+              'int ksu_handle_faccessat(int *dfd, struct filename **filename, int *mode,' \
+              kernel_experiment/KernelSU/kernel/feature/sucompat.h
+            grep -Fq \
+              'int ksu_handle_stat(int *dfd, struct filename **filename, int *flags);' \
+              kernel_experiment/KernelSU/kernel/feature/sucompat.h
+          fi
 
       - name: Configure baseline, smoke, and selected profile
         shell: bash
