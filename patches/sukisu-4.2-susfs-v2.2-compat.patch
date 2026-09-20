@@ -1,0 +1,85 @@
+diff --git a/fs/exec.c b/fs/exec.c
+--- a/fs/exec.c
++++ b/fs/exec.c
+@@ -1759,6 +1759,6 @@ static int __do_execve_file(int fd, struct filename *filename,
+ #ifdef CONFIG_KSU
+ #ifdef CONFIG_KSU_SUSFS
+-	if (likely(susfs_is_current_proc_umounted()) ||
++	if (likely(susfs_is_current_proc_no_su()) ||
+ 	    !ksu_su_compat_enabled)
+ 		goto orig_flow;
+ 
+diff --git a/fs/namespace.c b/fs/namespace.c
+--- a/fs/namespace.c
++++ b/fs/namespace.c
+@@ -747,9 +747,21 @@ struct mount *__lookup_mnt(struct vfsmount *mnt, struct dentry *dentry)
+ {
+ 	struct hlist_head *head = m_hash(mnt, dentry);
+ 	struct mount *p;
+ 
++#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
++	/* zygote_next shares init's namespace; return only the original mount. */
++	if (susfs_is_current_proc_umounted_for_zygote_next()) {
++		hlist_for_each_entry_rcu(p, head, mnt_hash)
++			if (p->mnt_id < DEFAULT_KSU_MNT_ID &&
++			    &p->mnt_parent->mnt == mnt &&
++			    p->mnt_mountpoint == dentry)
++				return p;
++		return NULL;
++	}
++#endif
++
+ 	hlist_for_each_entry_rcu(p, head, mnt_hash)
+ 		if (&p->mnt_parent->mnt == mnt && p->mnt_mountpoint == dentry)
+ 			return p;
+ 	return NULL;
+ }
+diff --git a/include/linux/susfs_def.h b/include/linux/susfs_def.h
+--- a/include/linux/susfs_def.h
++++ b/include/linux/susfs_def.h
+@@ -58,3 +58,5 @@
+  // thread_info->flags is unsigned long :D
+ #define TIF_PROC_UMOUNTED 33
++#define TIF_PROC_NO_SU 34
++#define TIF_PROC_UMOUNTED_FOR_ZYGOTE_NEXT 35
+ 
+@@ -99,11 +101,39 @@ static inline bool susfs_is_current_proc_umounted(void) {
+ static inline void susfs_set_current_proc_umounted(void) {
+ 	set_thread_flag(TIF_PROC_UMOUNTED);
+ }
+ 
++static inline void susfs_clear_current_proc_umounted(void) {
++	clear_thread_flag(TIF_PROC_UMOUNTED);
++}
++
++static inline bool susfs_is_current_proc_umounted_for_zygote_next(void) {
++	return likely(test_thread_flag(TIF_PROC_UMOUNTED_FOR_ZYGOTE_NEXT));
++}
++
++static inline void susfs_set_current_proc_umounted_for_zygote_next(void) {
++	set_thread_flag(TIF_PROC_UMOUNTED_FOR_ZYGOTE_NEXT);
++}
++
++static inline void susfs_clear_current_proc_umounted_for_zygote_next(void) {
++	clear_thread_flag(TIF_PROC_UMOUNTED_FOR_ZYGOTE_NEXT);
++}
++
+ static inline bool susfs_is_current_proc_umounted_app(void) {
+ 	return (likely(test_thread_flag(TIF_PROC_UMOUNTED)) &&
+ 			current_uid().val >= 10000);
+ }
+ 
++static inline bool susfs_is_current_proc_no_su(void) {
++	return likely(test_thread_flag(TIF_PROC_NO_SU));
++}
++
++static inline void susfs_set_current_proc_no_su(void) {
++	set_thread_flag(TIF_PROC_NO_SU);
++}
++
++static inline void susfs_clear_current_proc_no_su(void) {
++	clear_thread_flag(TIF_PROC_NO_SU);
++}
++
+ #define SUSFS_IS_INODE_SUS_MAP(inode) \
+ 		inode && inode->i_mapping && \
