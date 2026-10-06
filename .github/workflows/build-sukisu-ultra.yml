@@ -425,6 +425,7 @@ jobs:
             "$RUNNER_TEMP/baseline-hook-files.from-patch"
 
           cat > "$RUNNER_TEMP/sukisu-compat-files.expected" <<'EOF'
+          kernel/include/uapi/supercall.h
           kernel/kernel_includes.h
           kernel/runtime/ksud.c
           kernel/selinux/rules.c
@@ -817,6 +818,10 @@ jobs:
           }
 
           for tree in kernel_baseline kernel_experiment; do
+            grep -Fq 'DECLARE(__u32, KERNEL_SU_UAPI_VERSION, 5);' \
+              "$tree/KernelSU/kernel/include/uapi/supercall.h"
+            grep -Fq 'DECLARE(__u32, EVENT_SERVICES, 4);' \
+              "$tree/KernelSU/kernel/include/uapi/supercall.h"
             require_one_call "$tree/fs/exec.c" \
               'ksu_handle_execveat(&fd'
             require_one_call "$tree/fs/exec.c" \

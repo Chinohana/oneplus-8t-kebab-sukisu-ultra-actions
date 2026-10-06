@@ -34,7 +34,7 @@ SukiSU remains on `builtin`, pinned to
 used as this project's kernel source. LineageOS remains pinned to `98a7970`.
 
 The builtin update brings signature-validation, custom-profile, SELinux and
-service-stage fixes. Two additional Linux 4.19 adaptations are required:
+service-stage fixes. Additional builtin and Linux 4.19 adaptations are required:
 
 - Replace the upstream reference to absent `arch.h` with arm64 register accessors
   used by its new `ksyscall` helpers. Other architectures are rejected explicitly.
@@ -42,6 +42,15 @@ service-stage fixes. Two additional Linux 4.19 adaptations are required:
   after exec has closed CLOEXEC descriptors. The SUSFS path tracks the upstream
   pre-hook result; the non-SUSFS path requires both the original su path and the
   actual rewrite to ksud. Ordinary execs and failed execs do not receive it.
+- Complete the builtin UAPI header with `EVENT_SERVICES = 4` and UAPI version 5,
+  matching the service start/skip handler already present in its dispatcher and
+  the scoped su-session support. Declare the optional bundled-LKM flag without
+  setting it: this kernel remains builtin. Remove the duplicated modern-only
+  policy pointer declaration that produces warnings on Linux 4.19.
+
+The first cloud run (`37492521349`) failed in all four variants because the
+upstream builtin dispatcher referenced the missing `EVENT_SERVICES` declaration.
+The header fix retains that service-stage behavior rather than removing it.
 
 Local checks passed strict application of the builtin compatibility and SELinux
 hide patches, and both kernel hook sequences. The workflow checks for exactly
