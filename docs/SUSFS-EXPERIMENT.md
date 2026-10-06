@@ -7,9 +7,9 @@ non-SUSFS baseline is preserved at `legacy@1bc3fb3`; the historical
 ## Fixed inputs
 
 - LineageOS kernel (`lineage-23.2`):
-  `66e230426430e0f87199dd77ba0e5b8c186408ea`
+  `98a7970af93b7e01ee77156e7fa0eb7e059a57f0`
 - SukiSU Ultra `builtin`:
-  `b20dee702035af09cb2ecb5f35443bbc1747f3e6`
+  `70fa0e092a2c81060823f8ae526eac14fdda2930` (candidate driver version 40959)
 - SukiSU 4.2 compatibility: separate no-su and zygote_next process flags,
   plus mount lookup protection for zygote_next on the Linux 4.19 manual-hook port.
 - Official SUSFS v2.2 source:

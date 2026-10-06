@@ -66,3 +66,25 @@ index 144b375..15c4b9a 100644
      if (!pending)
          return NULL;
  
+diff --git a/kernel/kernel_includes.h b/kernel/kernel_includes.h
+--- a/kernel/kernel_includes.h
++++ b/kernel/kernel_includes.h
+@@ -73,7 +73,17 @@
+ #include <linux/vmalloc.h>
+ #include <linux/tty.h>
+ #include <linux/kref.h>
+-#include "arch.h"
++/* arm64 register helpers for the builtin ksyscall backport. */
++#if defined(__aarch64__)
++#define PT_REGS_PARM1(regs_ptr) ((regs_ptr)->regs[0])
++#define PT_REGS_PARM2(regs_ptr) ((regs_ptr)->regs[1])
++#define PT_REGS_PARM3(regs_ptr) ((regs_ptr)->regs[2])
++#define PT_REGS_SYSCALL_PARM4(regs_ptr) ((regs_ptr)->regs[3])
++#define PT_REGS_PARM5(regs_ptr) ((regs_ptr)->regs[4])
++#define PT_REGS_PARM6(regs_ptr) ((regs_ptr)->regs[5])
++#else
++#error "This Linux 4.19 SukiSU compatibility patch requires arm64"
++#endif
+ #ifdef CONFIG_KSU_SUSFS
+ #include <linux/susfs.h>
+ #include <linux/susfs_def.h>
