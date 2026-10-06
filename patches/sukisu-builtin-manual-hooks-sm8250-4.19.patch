@@ -1,12 +1,12 @@
 diff --git a/fs/exec.c b/fs/exec.c
-index bdc585e1d2cc..2e16038e6bb6 100644
 --- a/fs/exec.c
 +++ b/fs/exec.c
-@@ -1895,11 +1895,19 @@ out_ret:
+@@ -1895,12 +1895,32 @@
  	return retval;
  }
  
 +#ifdef CONFIG_KSU
++extern int ksu_install_su_fd(void);
 +extern int ksu_handle_execveat(int *fd, struct filename **filename_ptr,
 +			       void *argv, void *envp, int *flags);
 +#endif
@@ -17,11 +17,23 @@ index bdc585e1d2cc..2e16038e6bb6 100644
  			      int flags)
  {
 +#ifdef CONFIG_KSU
++	int retval;
++	bool ksu_su_exec = !IS_ERR(filename) && filename &&
++		!strcmp(filename->name, "/system/bin/su");
++
 +	ksu_handle_execveat(&fd, &filename, &argv, &envp, &flags);
-+#endif
++	ksu_su_exec = ksu_su_exec && !IS_ERR(filename) && filename &&
++		!strcmp(filename->name, "/data/adb/ksud");
++	retval = __do_execve_file(fd, filename, argv, envp, flags, NULL);
++	if (ksu_su_exec && retval >= 0)
++		ksu_install_su_fd();
++	return retval;
++#else
  	return __do_execve_file(fd, filename, argv, envp, flags, NULL);
++#endif
  }
  
+ int do_execve_file(struct file *file, void *__argv, void *__envp)
 diff --git a/fs/open.c b/fs/open.c
 index 965b84d486b8..04b4cecd7ae2 100644
 --- a/fs/open.c
