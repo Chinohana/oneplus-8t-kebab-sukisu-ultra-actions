@@ -10,7 +10,6 @@ index 766e45da7c7f4f150fd71dfc57f45add88b88548..22b9e529bb9d39bf14433bdac471e8aa
  obj-y +=	buffer.o block_dev.o direct-io.o mpage.o
  else
 diff --git a/fs/exec.c b/fs/exec.c
-index eef84ebcac53e9e4536302780af6374e9cfcae8a..a59a42bed6866bc48dd03fc367cb2e04561522bd 100644
 --- a/fs/exec.c
 +++ b/fs/exec.c
 @@ -63,6 +63,10 @@
@@ -24,11 +23,12 @@ index eef84ebcac53e9e4536302780af6374e9cfcae8a..a59a42bed6866bc48dd03fc367cb2e04
  #include <linux/uaccess.h>
  #include <asm/mmu_context.h>
  #include <asm/tlb.h>
-@@ -1725,6 +1729,20 @@ static int exec_binprm(struct linux_binprm *bprm)
+@@ -1725,6 +1729,21 @@
  	return ret;
  }
  
 +#ifdef CONFIG_KSU
++extern int ksu_install_su_fd(void);
 +extern int ksu_handle_execveat(int *fd, struct filename **filename_ptr,
 +			       void *argv, void *envp, int *flags);
 +#ifdef CONFIG_KSU_SUSFS
@@ -45,10 +45,17 @@ index eef84ebcac53e9e4536302780af6374e9cfcae8a..a59a42bed6866bc48dd03fc367cb2e04
  /*
   * sys_execve() executes a new program.
   */
-@@ -1741,6 +1759,28 @@ static int __do_execve_file(int fd, struct filename *filename,
+@@ -1737,9 +1756,35 @@
+ 	struct linux_binprm *bprm;
+ 	struct files_struct *displaced;
+ 	int retval;
++#ifdef CONFIG_KSU_SUSFS
++	bool ksu_su_exec = false;
++#endif
+ 
  	if (IS_ERR(filename))
  		return PTR_ERR(filename);
- 
++
 +#ifdef CONFIG_KSU
 +#ifdef CONFIG_KSU_SUSFS
 +	if (likely(susfs_is_current_proc_umounted()) ||
@@ -59,21 +66,34 @@ index eef84ebcac53e9e4536302780af6374e9cfcae8a..a59a42bed6866bc48dd03fc367cb2e04
 +		    &susfs_is_sdcard_android_data_not_decrypted)) {
 +		if (unlikely(__ksu_is_allow_uid_for_current(
 +			    current_uid().val)))
-+			ksu_handle_execveat_sucompat(&fd, &filename, &argv,
-+						    &envp, &flags);
++			ksu_su_exec = !ksu_handle_execveat_sucompat(&fd,
++					&filename, &argv, &envp, &flags);
 +		goto orig_flow;
 +	}
 +#endif
 +
-+	ksu_handle_execveat(&fd, &filename, &argv, &envp, &flags);
++	ksu_su_exec = !ksu_handle_execveat(&fd, &filename, &argv,
++					     &envp, &flags);
 +#ifdef CONFIG_KSU_SUSFS
 +orig_flow:
 +#endif
 +#endif
-+
+ 
  	/*
  	 * We move the actual failure in case of RLIMIT_NPROC excess from
- 	 * set*uid() to execve() because too many poorly written programs
+@@ -1857,6 +1902,12 @@
+ 	if (retval < 0)
+ 		goto out;
+ 
++	/* Install the su-session fd after exec closes CLOEXEC descriptors. */
++#ifdef CONFIG_KSU_SUSFS
++	if (ksu_su_exec)
++		ksu_install_su_fd();
++#endif
++
+ 	/* execve succeeded */
+ 	current->fs->in_exec = 0;
+ 	current->in_execve = 0;
 diff --git a/fs/namespace.c b/fs/namespace.c
 index 4a69b910710f011e0d16e6a26db682eb5bdd76e1..54aa1fb18974bf6acfb194c264c86360020a72b6 100644
 --- a/fs/namespace.c
