@@ -38,7 +38,7 @@ on:
   workflow_dispatch:
     inputs:
       enable_susfs:
-        description: Include SUSFS v2.2 kernel support
+        description: Include SUSFS v2.3 kernel support
         required: true
         type: boolean
         default: true
@@ -314,7 +314,7 @@ jobs:
             origin "$SUSFS_COMMIT"
           git -C susfs_reference checkout --detach "$SUSFS_COMMIT"
           test "$(git -C susfs_reference rev-parse HEAD)" = "$SUSFS_COMMIT"
-          grep -Fqx '#define SUSFS_VERSION "v2.2.0"' \
+          grep -Fqx '#define SUSFS_VERSION "v2.3.0"' \
             susfs_reference/kernel_patches/include/linux/susfs.h
 
           git init sm8250_reference
@@ -394,8 +394,6 @@ jobs:
 
             cat > "$RUNNER_TEMP/susfs-sukisu-42-compat-files.expected" <<'EOF'
           fs/exec.c
-          fs/namespace.c
-          include/linux/susfs_def.h
           EOF
             sed -i 's/^          //' \
               "$RUNNER_TEMP/susfs-sukisu-42-compat-files.expected"
@@ -426,7 +424,6 @@ jobs:
 
           cat > "$RUNNER_TEMP/sukisu-compat-files.expected" <<'EOF'
           kernel/include/uapi/supercall.h
-          kernel/kernel_includes.h
           kernel/runtime/ksud.c
           kernel/selinux/rules.c
           kernel/sulog/event.c
@@ -698,13 +695,13 @@ jobs:
             exit 1
           fi
 
-      - name: Audit v2.2 source identity and minimal adaptations
+      - name: Audit v2.3 source identity and minimal adaptations
         if: ${{ env.ENABLE_SUSFS == 'true' }}
         shell: bash
         run: |
           set -euo pipefail
 
-          grep -Fqx '#define SUSFS_VERSION "v2.2.0"' \
+          grep -Fqx '#define SUSFS_VERSION "v2.3.0"' \
             kernel_experiment/include/linux/susfs.h
           grep -Fqx '#define SUSFS_VARIANT "NON-GKI"' \
             kernel_experiment/include/linux/susfs.h
@@ -734,33 +731,23 @@ jobs:
               kernel_experiment/include/linux/susfs_def.h
           done
           grep -Fq \
-            'if (susfs_is_current_proc_umounted_for_zygote_next()) {' \
+            'if (susfs_is_current_proc_umounted()) {' \
             kernel_experiment/fs/namespace.c
 
           cmp \
             <(sed -e 's/\r$//' -e 's/[[:space:]]*$//' \
-                susfs_reference/kernel_patches/include/linux/susfs_def.h | \
-              awk 'NF { blank=0; print; next } !blank { print; blank=1 }') \
-            <(sed \
-                -e '/^#define TIF_PROC_NO_SU 34$/d' \
-                -e '/^#define TIF_PROC_UMOUNTED_FOR_ZYGOTE_NEXT 35$/d' \
-                -e '/^static inline void susfs_clear_current_proc_umounted(void) {$/,/^}$/d' \
-                -e '/^static inline bool susfs_is_current_proc_umounted_for_zygote_next(void) {$/,/^}$/d' \
-                -e '/^static inline void susfs_set_current_proc_umounted_for_zygote_next(void) {$/,/^}$/d' \
-                -e '/^static inline void susfs_clear_current_proc_umounted_for_zygote_next(void) {$/,/^}$/d' \
-                -e '/^static inline bool susfs_is_current_proc_no_su(void) {$/,/^}$/d' \
-                -e '/^static inline void susfs_set_current_proc_no_su(void) {$/,/^}$/d' \
-                -e '/^static inline void susfs_clear_current_proc_no_su(void) {$/,/^}$/d' \
-                -e 's/\r$//' -e 's/[[:space:]]*$//' \
-                kernel_experiment/include/linux/susfs_def.h | \
-              awk 'NF { blank=0; print; next } !blank { print; blank=1 }')
+              susfs_reference/kernel_patches/include/linux/susfs_def.h) \
+            <(sed -e 's/\r$//' -e 's/[[:space:]]*$//' \
+              kernel_experiment/include/linux/susfs_def.h)
 
           grep -Fq \
             'Linux 4.19 delivers the raw child name through fsnotify_ops.handle_event.' \
             kernel_experiment/fs/susfs.c
-          grep -Fq \
-            'Official v2.2 dereferences info there; report the error through' \
-            kernel_experiment/fs/susfs.c
+          grep -Fq 'err = -ENOMEM;' kernel_experiment/fs/susfs.c
+          grep -Fq 'susfs_is_inode_sus_kstat' kernel_experiment/fs/stat.c
+          grep -Fq 'susfs_statfs_by_dentry' kernel_experiment/fs/statfs.c
+          grep -Fq 'susfs_sus_kstat_spoof_proc_fd_seq_show' kernel_experiment/fs/proc/fd.c
+          grep -Fq 'susfs_sus_kstat_spoof_inotify_fdinfo' kernel_experiment/fs/notify/fdinfo.c
           grep -Fq \
             '.handle_event = susfs_handle_sdcard_inode_event' \
             kernel_experiment/fs/susfs.c
@@ -794,8 +781,8 @@ jobs:
           diff -u \
             susfs_reference/kernel_patches/fs/susfs.c \
             kernel_experiment/fs/susfs.c \
-            > audit/susfs-v2.2-to-sm8250-4.19.diff || true
-          test -s audit/susfs-v2.2-to-sm8250-4.19.diff
+            > audit/susfs-v2.3-to-sm8250-4.19.diff || true
+          test -s audit/susfs-v2.3-to-sm8250-4.19.diff
 
       - name: Audit manual entry hooks and pathname ABI
         shell: bash
@@ -1908,7 +1895,7 @@ jobs:
               >> audit/kernel-build-files.sha256
           fi
 
-      - name: Build pinned official v2.2 userspace test tool
+      - name: Build pinned official v2.3 userspace test tool
         if: ${{ env.ENABLE_SUSFS == 'true' }}
         shell: bash
         run: |
@@ -1938,13 +1925,13 @@ jobs:
 
           mkdir -p artifacts/tool
           cp "$tool_source" \
-            artifacts/tool/ksu_susfs-v2.2.0-arm64
-          sha256sum artifacts/tool/ksu_susfs-v2.2.0-arm64 |
-            tee artifacts/tool/ksu_susfs-v2.2.0-arm64.sha256
+            artifacts/tool/ksu_susfs-v2.3.0-arm64
+          sha256sum artifacts/tool/ksu_susfs-v2.3.0-arm64 |
+            tee artifacts/tool/ksu_susfs-v2.3.0-arm64.sha256
           cp "$ndk_root/source.properties" \
             artifacts/tool/ndk-source.properties
 
-          tool_artifact_name="${BUILD_CHANNEL^^}_ksu_susfs-tool_v2.2.0_${PROFILE}_HIDE-${ENABLE_SELINUX_HIDE}_SF-${SUSFS_COMMIT:0:12}_NDK-${ANDROID_NDK_VERSION}_WF-${GITHUB_SHA:0:12}"
+          tool_artifact_name="${BUILD_CHANNEL^^}_ksu_susfs-tool_v2.3.0_${PROFILE}_HIDE-${ENABLE_SELINUX_HIDE}_SF-${SUSFS_COMMIT:0:12}_NDK-${ANDROID_NDK_VERSION}_WF-${GITHUB_SHA:0:12}"
           echo "TOOL_ARTIFACT_NAME=$tool_artifact_name" \
             >> "$GITHUB_ENV"
 
@@ -1969,7 +1956,7 @@ jobs:
           string_feature=""
           if test "$ENABLE_SUSFS" = "true"; then
             feature_tags="${PROFILE}"
-            string_feature="SUSFS v2.2 ${PROFILE}"
+            string_feature="SUSFS v2.3 ${PROFILE}"
           else
             feature_tags="nosusfs"
             string_feature="no SUSFS"
@@ -2053,7 +2040,7 @@ jobs:
           string_feature=""
           if test "$ENABLE_SUSFS" = "true"; then
             feature_tags="${PROFILE}"
-            string_feature="SUSFS v2.2 ${PROFILE}"
+            string_feature="SUSFS v2.3 ${PROFILE}"
           else
             feature_tags="nosusfs"
             string_feature="no SUSFS"
@@ -2199,7 +2186,7 @@ jobs:
               echo "abi=arm64-v8a"
               echo "android_ndk_version=$ANDROID_NDK_VERSION"
               echo "builder_commit=$GITHUB_SHA"
-              cat artifacts/tool/ksu_susfs-v2.2.0-arm64.sha256
+              cat artifacts/tool/ksu_susfs-v2.3.0-arm64.sha256
             } | tee artifacts/tool/tool-provenance.txt
           fi
 
@@ -2218,7 +2205,7 @@ jobs:
           if-no-files-found: error
           retention-days: ${{ env.BUILD_CHANNEL == 'approved' && 7 || 30 }}
 
-      - name: Upload pinned v2.2 userspace test tool
+      - name: Upload pinned v2.3 userspace test tool
         if: ${{ env.ENABLE_SUSFS == 'true' }}
         uses: actions/upload-artifact@v4
         with:
