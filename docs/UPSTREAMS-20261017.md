@@ -54,6 +54,26 @@ helper removals do not alter its 4.19 status path.
 
 ## Validation
 
+The first new build (`39021969061`, PR head `151a0f23`) failed on three upstream
+builtin omissions: the APK package buffer escaped its scope, the observer used
+a scan-mode constant absent from the builtin boolean API, and the dynamic
+Manager ioctl declaration was missing.
+
+The compatibility patch now extracts the candidate APK package before either
+authorization path, processes the built-in candidate only for the built-in
+package name, and matches each dynamic entry to that actual package before
+checking its registered UID and certificate. Observer task work uses
+`track_throne(false)` for the builtin full synchronous scan. Manager ioctl 106
+uses the exact `_IOWR` encoding and structure from the reference Manager UAPI.
+
+`scripts/test-manager-crown.py` compiles the actual patched authorization
+function with host-side environment stubs. Ten cases cover valid dynamic and
+built-in candidates, wrong signatures, wrong registered UIDs, cross-package
+certificate reuse, unknown packages, disabled dynamic authorization, built-in
+priority/failure, verified-signature fallback and package-parse failure. These
+checks run on both prepared kernel trees before cloud compilation; they do not
+substitute for device tests of APK scanning and the full runtime.
+
 Both rebased SukiSU patches passed strict application checks. Checks confirm
 that the upstream dynamic-Manager and forced-feature call sites remain present.
 The existing v2.3 kernel/exec/SELinux patch sequence is unchanged. Four fresh
