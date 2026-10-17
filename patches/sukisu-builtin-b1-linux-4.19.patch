@@ -1,19 +1,51 @@
+diff --git a/kernel/include/uapi/supercall.h b/kernel/include/uapi/supercall.h
+--- a/kernel/include/uapi/supercall.h
++++ b/kernel/include/uapi/supercall.h
+@@ -14,7 +14,8 @@
+ #endif
+ 
+ // 2: allowlist v4 root profile flag
+-DECLARE(__u32, KERNEL_SU_UAPI_VERSION, 2);
++// 3: scoped su-session fd; 4: optional bundled-LKM flag; 5: services result
++DECLARE(__u32, KERNEL_SU_UAPI_VERSION, 5);
+ 
+ /* Magic numbers for reboot hook to install fd */
+ DECLARE(__u32, KSU_INSTALL_MAGIC1, 0xDEADBEEF);
+@@ -34,6 +35,7 @@
+ DECLARE(__u32, KSU_GET_INFO_FLAG_MANAGER, (1U << 1));
+ DECLARE(__u32, KSU_GET_INFO_FLAG_LATE_LOAD, (1U << 2));
+ DECLARE(__u32, KSU_GET_INFO_FLAG_PR_BUILD, (1U << 3));
++DECLARE(__u32, KSU_GET_INFO_FLAG_BUNDLED, (1U << 4));
+ 
+ struct ksu_get_info_cmd {
+     __u32 version; /* Output: KERNEL_SU_VERSION */
+diff --git a/kernel/policy/feature.c b/kernel/policy/feature.c
+--- a/kernel/policy/feature.c
++++ b/kernel/policy/feature.c
+@@ -7,7 +7,9 @@
+     [KSU_FEATURE_KERNEL_UMOUNT] = "kernel_umount",
+     [KSU_FEATURE_SULOG] = "sulog",
+     [KSU_FEATURE_ADB_ROOT] = "adb_root",
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0) || defined(CONFIG_KSU_SELINUX_HIDE_4_19)
+     [KSU_FEATURE_SELINUX_HIDE] = "selinux_hide",
++#endif
+     [KSU_FEATURE_SHELL_SU_ADB_ONLY] = "shell_su_adb_only",
+ };
+ 
 diff --git a/kernel/runtime/ksud.c b/kernel/runtime/ksud.c
-index a18707b..00ad390 100644
 --- a/kernel/runtime/ksud.c
 +++ b/kernel/runtime/ksud.c
-@@ -53,8 +53,10 @@ void on_post_fs_data(void)
-     ksu_load_allow_list();
+@@ -55,7 +55,9 @@
      ksu_observer_init();
      // sanity check, this may influence the performance
      stop_input_hook();
 +#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
      ksu_selinux_hide_handle_post_fs_data();
 +#endif
+     // retry forced features which failed at second stage
+     ksu_feature_apply_forced();
  }
- 
- extern void ext4_unregister_sysfs(struct super_block *sb);
-@@ -216,7 +218,9 @@ int ksu_handle_execveat_ksud(int *fd, struct filename **filename_ptr,
+@@ -219,7 +221,9 @@
              char buf[16];
              if (check_argv(*argv, 1, "second_stage", buf, sizeof(buf))) {
                  pr_info("/system/bin/init second_stage executed\n");
@@ -23,7 +55,7 @@ index a18707b..00ad390 100644
                  apply_kernelsu_rules();
                  cache_sid();
                  setup_ksu_cred();
-@@ -288,7 +292,9 @@ int ksu_handle_execveat_ksud(int *fd, struct filename **filename_ptr,
+@@ -291,7 +295,9 @@
          char buf[16];
          if (!init_second_stage_executed && check_argv(*argv, 1, "second_stage", buf, sizeof(buf))) {
              pr_info("/system/bin/init second_stage executed\n");
@@ -34,10 +66,9 @@ index a18707b..00ad390 100644
              cache_sid();
              setup_ksu_cred();
 diff --git a/kernel/selinux/rules.c b/kernel/selinux/rules.c
-index f8a33fa..778cd58 100644
 --- a/kernel/selinux/rules.c
 +++ b/kernel/selinux/rules.c
-@@ -152,7 +152,9 @@
+@@ -151,7 +151,9 @@
  
  void apply_kernelsu_rules(void)
  {
@@ -47,7 +78,7 @@ index f8a33fa..778cd58 100644
      struct policydb *db;
  
      if (!getenforce()) {
-@@ -254,6 +254,9 @@ do_stop_machine:
+@@ -255,6 +257,9 @@
  out_flush:
      smp_mb();
      reset_avc_cache();
@@ -58,10 +89,9 @@ index f8a33fa..778cd58 100644
  }
  
 diff --git a/kernel/sulog/event.c b/kernel/sulog/event.c
-index 144b375..15c4b9a 100644
 --- a/kernel/sulog/event.c
 +++ b/kernel/sulog/event.c
-@@ -373,9 +373,14 @@ static struct ksu_sulog_pending_event *ksu_sulog_capture_grant_root(const struct
+@@ -374,9 +374,14 @@
      struct ksu_sulog_event *event;
  
      // This is actually stupid fix
@@ -76,24 +106,3 @@ index 144b375..15c4b9a 100644
      if (!pending)
          return NULL;
  
-diff --git a/kernel/include/uapi/supercall.h b/kernel/include/uapi/supercall.h
---- a/kernel/include/uapi/supercall.h
-+++ b/kernel/include/uapi/supercall.h
-@@ -13,7 +13,8 @@
- #endif
- 
- // 2: allowlist v4 root profile flag
--DECLARE(__u32, KERNEL_SU_UAPI_VERSION, 2);
-+// 3: scoped su-session fd; 4: optional bundled-LKM flag; 5: services result
-+DECLARE(__u32, KERNEL_SU_UAPI_VERSION, 5);
- 
- /* Magic numbers for reboot hook to install fd */
- DECLARE(__u32, KSU_INSTALL_MAGIC1, 0xDEADBEEF);
-@@ -33,6 +34,7 @@
- DECLARE(__u32, KSU_GET_INFO_FLAG_MANAGER, (1U << 1));
- DECLARE(__u32, KSU_GET_INFO_FLAG_LATE_LOAD, (1U << 2));
- DECLARE(__u32, KSU_GET_INFO_FLAG_PR_BUILD, (1U << 3));
-+DECLARE(__u32, KSU_GET_INFO_FLAG_BUNDLED, (1U << 4));
- 
- struct ksu_get_info_cmd {
-     __u32 version; /* Output: KERNEL_SU_VERSION */

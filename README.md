@@ -17,7 +17,7 @@ LineageOS 23.2 Linux 4.19 内核上集成了 SukiSU Ultra 和 SUSFS v2.3。
 | 设备 | OnePlus 8T（`kebab`，已测试型号 KB2000） |
 | 系统 | LineageOS 23.2 / Android 16 |
 | 内核 | Linux 4.19，LineageOS `lineage-23.2` 分支；确切提交见内核书签 |
-| Root | SukiSU Ultra `builtin`，候选版本 40971（待真机验证） |
+| Root | SukiSU Ultra `builtin`，候选版本 41001（待真机验证） |
 | SUSFS | v2.3.0，NON-GKI，Inline Hook |
 | 编译器 | Android Clang `r563880` |
 
@@ -25,9 +25,9 @@ LineageOS 23.2 Linux 4.19 内核上集成了 SukiSU Ultra 和 SUSFS v2.3。
 
 ## 当前状态
 
-本次更新分支为 SUSFS v2.3 / SukiSU 40971 候选，尚需重新完成云端构建和真机
+本次更新分支为 SUSFS v2.3 / SukiSU 41001 候选，尚需重新完成云端构建和真机
 验证。下方既有启动、安装和硬件检查记录来自更新前的版本，不能作为本候选的
-批准依据。更新内容见 [`docs/UPSTREAMS-20261013.md`](docs/UPSTREAMS-20261013.md)。
+批准依据。最新更新见 [`docs/UPSTREAMS-20261017.md`](docs/UPSTREAMS-20261017.md)。
 
 `main` 默认构建 `extended-full`，也就是当前已经在开发设备上启动并安装过的
 完整 SUSFS 配置。
@@ -176,7 +176,7 @@ GitHub 云端无法访问物理手机，因此不会假装“自动读取”手�
 ## 固定的其他上游项目
 
 - **SukiSU**：`builtin` 分支是支持传统 Manual Hook（非 GKI 内联调用、
-  无需 KPROBES）的分支，本仓库候选固定提交 `6c284e9`。SukiSU 的
+  无需 KPROBES）的分支，本仓库候选固定提交 `0af2cf9`。SukiSU 的
   `main` 分支（v4.x）是新一代架构，`CONFIG_KSU` 硬依赖 `CONFIG_KPROBES`
   且使用运行时 syscall 打补丁与 LSM Hook，与本项目"KPM/kprobes 关闭、
   禁止运行时打补丁"的约束冲突，因此不用于本仓库。
