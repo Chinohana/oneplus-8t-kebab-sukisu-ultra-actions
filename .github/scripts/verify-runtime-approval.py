@@ -41,8 +41,30 @@ def kernel_commit(root: Path, pin_path: str) -> str:
     return fields[2]
 
 
+def target_platform(pins: dict[str, str]) -> tuple[str, str]:
+    """Allow known ROM/branch/bookmark pairs without executing candidate code."""
+    platforms = {
+        "lineage-23.2": ("23.2", "36"),
+        "lineage-24.0": ("24.0", "37"),
+    }
+    branch = pins.get("KERNEL_BRANCH", "")
+    if branch not in platforms:
+        raise SystemExit("Unsupported kernel platform")
+    version, api = platforms[branch]
+    if pins.get("KERNEL_REPOSITORY") != "https://github.com/LineageOS/android_kernel_oneplus_sm8250.git":
+        raise SystemExit("Unsupported kernel repository")
+    if pins.get("KERNEL_PIN_PATH") != f"pins/kernel-{branch}":
+        raise SystemExit("Kernel bookmark does not match the target platform")
+    # Missing fields are supported only for existing, pre-migration 23.2 inputs.
+    legacy = branch == "lineage-23.2" and "ROM_VERSION" not in pins and "ANDROID_API" not in pins
+    if not legacy and (pins.get("ROM_VERSION"), pins.get("ANDROID_API")) != (version, api):
+        raise SystemExit("ROM version/API does not match the kernel branch")
+    return f"LineageOS {version}", api
+
+
 def compute_fingerprint(root: Path) -> tuple[str, str]:
     pins = load_pins(root)
+    rom, _ = target_platform(pins)
     commit = kernel_commit(root, pins["KERNEL_PIN_PATH"])
     pathspecs = [
         ".gitmodules",
@@ -63,7 +85,7 @@ def compute_fingerprint(root: Path) -> tuple[str, str]:
     ordered = [
         ("fingerprint_schema", "1"),
         ("device", "kebab"),
-        ("rom", "LineageOS 23.2"),
+        ("rom", rom),
         ("kernel_repository", pins["KERNEL_REPOSITORY"]),
         ("kernel_branch", pins["KERNEL_BRANCH"]),
         ("kernel_commit", commit),
@@ -147,6 +169,8 @@ def main() -> None:
         raise SystemExit("Checked-out PR head changed during approval")
 
     expected_fingerprint, commit = compute_fingerprint(args.candidate)
+    pins = load_pins(args.candidate)
+    rom, api = target_platform(pins)
 
     with zipfile.ZipFile(args.artifact) as outer:
         infos = safe_members(outer)
@@ -165,7 +189,7 @@ def main() -> None:
     required = {
         "status": "CANDIDATE_DO_NOT_AUTO_INSTALL",
         "device": "kebab",
-        "rom": "LineageOS 23.2",
+        "rom": rom,
         "profile": "extended-full",
         "enable_susfs": "true",
         "enable_selinux_hide": "true",
@@ -173,9 +197,11 @@ def main() -> None:
         "build_channel": "candidate",
         "build_fingerprint": expected_fingerprint,
         "github_run_id": args.run_id,
-        "kernel_branch": "lineage-23.2",
+        "kernel_branch": pins["KERNEL_BRANCH"],
         "kernel_commit": commit,
     }
+    if "ANDROID_API" in pins:
+        required["android_api"] = api
     for key, expected in required.items():
         if provenance.get(key) != expected:
             raise SystemExit(
@@ -189,6 +215,9 @@ def main() -> None:
         "pr": args.pr,
         "head_sha": args.head_sha,
         "kernel_commit": commit,
+        "rom": rom,
+        "android_api": api,
+        "kernel_branch": pins["KERNEL_BRANCH"],
         "build_fingerprint": expected_fingerprint,
         "package_sha256": actual_package_sha,
         "phone_test_attested": True,
