@@ -2,7 +2,6 @@
 """Regression tests for trusted verification of legacy and Android 17 artifacts."""
 import hashlib
 import importlib.util
-import io
 import json
 import os
 from pathlib import Path
@@ -37,7 +36,7 @@ class PlatformApproval(unittest.TestCase):
             if source.is_file():
                 target = self.root / name
                 target.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copyfile(source, target)
+                shutil.copy2(source, target)
         git(self.root, "init", "-q")
         git(self.root, "config", "user.email", "test@example.invalid")
         git(self.root, "config", "user.name", "Platform tests")
