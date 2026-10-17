@@ -19,6 +19,75 @@ diff --git a/kernel/include/uapi/supercall.h b/kernel/include/uapi/supercall.h
  
  struct ksu_get_info_cmd {
      __u32 version; /* Output: KERNEL_SU_VERSION */
+@@ -229,5 +231,6 @@
+ DECLARE(__u32, KSU_IOCTL_ENABLE_KPM, _IOC(_IOC_READ, 'K', 102, 0));
+ DECLARE(__u32, KSU_IOCTL_LIST_TRY_UMOUNT, _IOC(_IOC_READ | _IOC_WRITE, 'K', 103, 0));
+ DECLARE(__u32, KSU_IOCTL_KPM, _IOC(_IOC_READ | _IOC_WRITE, 'K', 200, 0));
++DECLARE(__u32, KSU_IOCTL_MANAGER, _IOWR('K', 106, struct ksu_manager_cmd));
+ 
+ #endif
+diff --git a/kernel/manager/pkg_observer.c b/kernel/manager/pkg_observer.c
+--- a/kernel/manager/pkg_observer.c
++++ b/kernel/manager/pkg_observer.c
+@@ -19,7 +19,7 @@
+     // Runs after exit_fs() if the task is exiting; path lookups would oops
+     if (current->flags & PF_EXITING)
+         return;
+-    track_throne(TRACK_THRONE_FORCE_SYNCHRONOUS);
++    track_throne(false); /* builtin: false performs a full synchronous scan */
+ }
+ 
+ // Never scan from the fsnotify handler: fsnotify_mark_srcu and the rename's dir
+@@ -41,7 +41,7 @@
+         }
+     }
+     pr_warn("defer track_throne failed, run it inline\n");
+-    track_throne(TRACK_THRONE_FORCE_SYNCHRONOUS);
++    track_throne(false); /* builtin: false performs a full synchronous scan */
+ }
+ static KSU_DECL_FSNOTIFY_OPS(ksu_handle_generic_event)
+ {
+diff --git a/kernel/manager/throne_tracker.c b/kernel/manager/throne_tracker.c
+--- a/kernel/manager/throne_tracker.c
++++ b/kernel/manager/throne_tracker.c
+@@ -40,13 +40,14 @@
+     struct uid_data *np;
+     bool builtin_present_this_call = false;
+     bool builtin_crowned_this_call = false;
++    char pkg[KSU_MAX_PACKAGE_NAME] = {};
++
++    if (get_pkg_from_apk_dir_path(pkg, apk_dir) < 0) {
++        pr_err("Failed to get package name from apk dir path: %s\n", apk_dir);
++        return 0;
++    }
+ 
+     if (sig_fallback) {
+-        char pkg[KSU_MAX_PACKAGE_NAME];
+-        if (get_pkg_from_apk_dir_path(pkg, apk_dir) < 0) {
+-            pr_err("Failed to get package name from apk dir path: %s\n", apk_dir);
+-            return 0;
+-        }
+ 
+         pr_info("manager pkg: %s\n", pkg);
+ 
+@@ -59,7 +60,7 @@
+                 break;
+             }
+         }
+-    } else {
++    } else if (!strncmp(pkg, KSU_PACKAGE_NAME, KSU_MAX_PACKAGE_NAME)) {
+         list_for_each_entry (np, list, list) {
+             if (strncmp(np->package, KSU_PACKAGE_NAME, KSU_MAX_PACKAGE_NAME) == 0) {
+                 builtin_present_this_call = true;
+@@ -94,7 +95,7 @@
+         return 0;
+ 
+     list_for_each_entry (np, list, list) {
+-        if (strncmp(np->package, pkg, KSU_MAX_PACKAGE_NAME) == 0)
++        if (strncmp(np->package, pkg, KSU_MAX_PACKAGE_NAME) != 0)
+             continue;
+         /*
+          * For dynamic managers the (package, uid) pair must match a
 diff --git a/kernel/policy/feature.c b/kernel/policy/feature.c
 --- a/kernel/policy/feature.c
 +++ b/kernel/policy/feature.c
