@@ -424,6 +424,7 @@ jobs:
 
           cat > "$RUNNER_TEMP/sukisu-compat-files.expected" <<'EOF'
           kernel/include/uapi/supercall.h
+          kernel/policy/feature.c
           kernel/runtime/ksud.c
           kernel/selinux/rules.c
           kernel/sulog/event.c
