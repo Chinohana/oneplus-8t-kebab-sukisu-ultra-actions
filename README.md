@@ -1,230 +1,62 @@
-# OnePlus 8T SukiSU Ultra + SUSFS v2.3
+# OnePlus 8T — LineageOS 24.0 实验性 SukiSU 内核
 
-[![Build](https://github.com/Chinohana/oneplus-8t-kebab-sukisu-ultra-actions/actions/workflows/build-sukisu-ultra.yml/badge.svg?branch=main)](https://github.com/Chinohana/oneplus-8t-kebab-sukisu-ultra-actions/actions/workflows/build-sukisu-ultra.yml)
+此分支为 OnePlus 8T（`kebab`，目标型号 KB2000）提供 LineageOS 24.0 /
+Android 17 的实验性支持，尚未完成 Android 17 真机验证。
 
-这是一个为 OnePlus 8T（`kebab` / KB2000）制作的内核构建项目。它在固定的
-LineageOS 23.2 Linux 4.19 内核上集成了 SukiSU Ultra 和 SUSFS v2.3。
+正式主线在迁移批准前仍支持 23.2。23.2 上已有的启动与硬件检查记录，不能作为
+24.0 的验证结果。完整迁移计划见 [实验说明](docs/LINEAGE-24-EXPERIMENT.md)。
 
-> [!CAUTION]
-> 这个项目只适用于下方列出的设备和系统版本，目前仍是测试版本。刷入错误的
-> 内核可能导致无法开机或数据丢失。请先备份原始 boot 镜像，并确保你能使用
-> Fastboot 恢复。不要把这里的产物用于其他手机、其他 ROM 或其他内核版本。
+## 固定输入
 
-## 适用范围
-
-| 项目 | 要求 |
+| 项目 | 当前目标 |
 | --- | --- |
-| 设备 | OnePlus 8T（`kebab`，已测试型号 KB2000） |
-| 系统 | LineageOS 23.2 / Android 16 |
-| 内核 | Linux 4.19，LineageOS `lineage-23.2` 分支；确切提交见内核书签 |
-| Root | SukiSU Ultra `builtin`，候选版本 41001（待真机验证） |
-| SUSFS | v2.3.0，NON-GKI，Inline Hook |
-| 编译器 | Android Clang `r563880` |
+| 系统 | LineageOS 24.0 / Android 17 / API 37 |
+| 内核 | 官方 `lineage-24.0`，Linux 4.19；完整 SHA 见 `pins/kernel-lineage-24.0` |
+| 配置 | `vendor/kona-perf_defconfig` + `vendor/oplus.config` |
+| Root | SukiSU Ultra `builtin`，41001 |
+| SUSFS | v2.3，NON-GKI，Inline Hook |
+| 编译器 | Android Clang r563880，LLVM integrated assembler |
+| KPM / kprobes | 关闭 |
 
-不满足这些条件时，请不要使用本项目产物。
+SukiSU、SUSFS、Clang、NDK 与 AnyKernel3 沿用迁移起点的固定版本。
+此次不因 Android 版本号变化重写 Root Hook 或更换工具链。
 
-## 当前状态
+## 构建与核验
 
-本次更新分支为 SUSFS v2.3 / SukiSU 41001 候选，尚需重新完成云端构建和真机
-验证。下方既有启动、安装和硬件检查记录来自更新前的版本，不能作为本候选的
-批准依据。最新更新见 [`docs/UPSTREAMS-20261017.md`](docs/UPSTREAMS-20261017.md)。
+实验 PR 自动构建四种配置：纯 SukiSU、SELinux hide、SUSFS extended-stat、
+以及 extended-full + SELinux hide。继续检查补丁落点、配置、符号、警告和 Image 大小。
 
-`main` 默认构建 `extended-full`，也就是当前已经在开发设备上启动并安装过的
-完整 SUSFS 配置。
+也可在 **Build kebab SukiSU Ultra** 中明确选择 `experiment/lineage-24.0`
+手动构建。该分支产物使用 `CANDIDATE_`，文件名含 `LOS24.0`；选择
+`latest-lineage-24.0` 时使用 `UNAPPROVED_LATEST_`。后者不会更新固定书签。
+实验分支不能生成主线 approved 通道产物。
 
-已经完成的检查包括：
+SUSFS 与 SELinux hide 仍可分别关闭。SUSFS 支持 smoke、minimal-mount、
+extended-stat、extended-full 档位；默认 extended-full。编译选项开启不代表
+自定义隐藏规则已配置。首次测试保持自定义规则为空。
 
-- GitHub Actions 完整编译与配置审计；
-- 使用 `fastboot boot` 临时启动；
-- 将同一个已测试镜像写入当前活动的 `boot_b`；
-- SukiSU root、ADB、SELinux Enforcing 和加密存储正常；
-- Wi-Fi、移动网络、相机、指纹、音频和文件读写正常；
-- `susfs4ksu v2.3.0-R28` 正常启动，sdcard 监控正常；
-- pstore 为空，未发现 panic、oops、BUG、UAF 或 lockup。
+构建指纹、provenance 和批准记录均区分目标平台。即使上游 23.2 / 24.0 内核
+提交相同，平台迁移也会检查目标 ref，并要求新的 Android 17 真机结果。
 
-尚未完成长期稳定性观察和大量重复冷启动测试，因此这里的“可用”不代表已经达到
-生产级稳定性。
+## 真机验证与采用条件
 
-## SUSFS 功能
+只使用与所安装 24.0 构建匹配的原始 boot 制作测试镜像，仅替换其中的 Image，
+保留 ramdisk、DTB 和 DTBO。先临时启动，再检查 Root、SELinux Enforcing、
+存储解密、网络、相机、指纹、音频、SUSFS 与隐藏开关、冷启动及内核日志。
+Zygisk / 模块兼容性单独检查。
 
-`extended-full` 包含当前官方 SUSFS v2.3 提供的九项功能：
+云端成功不能代替真机结果。受信任 main 的验证器先通过独立兼容 PR 支持 24.0，
+之后才可核验这个实验候选的精确提交、产物哈希与测试声明。不会自动刷机或切槽。
 
-- SUS Path
-- SUS Mount
-- SUS Kstat
-- SUS Maps
-- Spoof Uname
-- Spoof Cmdline / Bootconfig
-- Open Redirect
-- Hide KSU / SUSFS Symbols
-- SUSFS Logging
+24.0 通过验证后，先将当时最后的 23.2 main 保存至 `archive/lineage-23.2-final`，
+核对远端存档 SHA，再将批准的 24.0 PR 合入 main。当前不提前冻结存档，避免漏掉
+实验期间的 23.2 更新。旧 `legacy` / `SUSFS` 分支继续保留其原有历史含义。
 
-旧版 Try Umount、自动添加挂载、Magic Mount 和 OverlayFS Auto Kstat 已被
-SUSFS 自 v2.2 起废弃，因此没有重新加入。KPM 和 kprobes 也保持关闭。
+## 实现与历史记录
 
-编译进内核不等于自动创建隐藏规则。首次启动时应保持自定义路径、映射、Kstat、
-重定向和伪装设置为空，再按需逐项配置。
+- [24.0 实验及迁移计划](docs/LINEAGE-24-EXPERIMENT.md)
+- [SUSFS 移植与历史检查](docs/SUSFS-EXPERIMENT.md)
+- [SELinux hide 实现与历史检查](docs/SELINUX-HIDE-EXPERIMENT.md)
+- [迁移起点的上游更新记录](docs/UPSTREAMS-20261017.md)
 
-## 分支说明
-
-| 分支 | 用途 |
-| --- | --- |
-| [`main`](https://github.com/Chinohana/oneplus-8t-kebab-sukisu-ultra-actions/tree/main) | SUSFS v2.3 完整版 + 可选的“隐藏 SELinux 修改”功能 |
-| [`SUSFS`](https://github.com/Chinohana/oneplus-8t-kebab-sukisu-ultra-actions/tree/SUSFS) | 仅 SUSFS v2.3 完整版，不含 SELinux 隐藏（旧 main 快照） |
-| [`legacy`](https://github.com/Chinohana/oneplus-8t-kebab-sukisu-ultra-actions/tree/legacy) | 不含 SUSFS 的旧版 SukiSU 内核，固定在 `1bc3fb3` |
-| `experiment/susfs-v2.2-sm8250-4.19` | SUSFS 移植过程的历史开发分支 |
-| `experiment/selinux-hide-sm8250-4.19` | “隐藏 SELinux 修改”移植的历史实验分支 |
-
-只想使用原来的无 SUSFS 版本时，请切换到 `legacy`。
-只想使用无 SELinux 隐藏的 SUSFS 版本时，请切换到 `SUSFS`。
-
-## 隐藏 SELinux 修改（默认包含）
-
-`main` 已包含 SukiSU“隐藏 SELinux 修改”的 Linux 4.19 回移植。该功能是可选
-开关：默认编译进内核，但不会自动启用，也不会把 SELinux 切换为 Permissive。它让应用
-UID（≥10000）读取 `/sys/fs/selinux` 的 policy/status 时看到的是 KSU 规则注入
-前的干净策略，系统进程与 root 仍使用实时策略。
-
-该功能已在开发机（OnePlus 8T / LineageOS 23.2）上完成真机复验：三轮以上
-冷启动、应用正常启动、无崩溃循环、开关往返正常、pstore 为空。实现边界、
-构建标识和验证记录见
-[`docs/SELINUX-HIDE-EXPERIMENT.md`](docs/SELINUX-HIDE-EXPERIMENT.md)。
-
-不需要该功能时，构建时关闭 **Enable SELinux hide** 选项即可。
-
-## 云端构建
-
-1. 打开仓库的 [Actions](https://github.com/Chinohana/oneplus-8t-kebab-sukisu-ultra-actions/actions) 页面。
-2. 选择 **Build kebab SukiSU Ultra**。
-3. 点击 **Run workflow**。
-4. 按需选择选项（默认全部开启）：
-   - **Enable SUSFS**：编译 SUSFS v2.3；关闭时产物为纯 SukiSU builtin 内核。
-   - **SUSFS profile**：SUSFS 功能档位（见下表），仅在 Enable SUSFS 开启时生效。
-   - **Enable SELinux hide**：编译“隐藏 SELinux 修改”（Linux 4.19 回移植）。
-   - **Use AnyKernel3**：打包为 AnyKernel3 ZIP；关闭时产物为 raw
-     `Image` / `System.map` / 配置与 provenance。
-   - **Use ccache**：用 ccache 缓存编译输出（默认开启）。基线、smoke、
-     minimal-mount 和最终配置各用自己的小缓存，不会再由四个候选任务争抢
-     同一个缓存。新配置或新内核第一次仍可能需要约 75–90 分钟；缓存建立
-     后，相同输入的重复构建目标约 30–45 分钟。LTO、链接和审计始终重新
-     执行，所以不会缩短到几分钟。缓存不改变产物；关闭后回到不带缓存的
-     旧构建路径。PR 关闭或合并后，其专属缓存会自动删除。
-   - **Kernel source**：`approved-pin` 使用仓库已经批准的提交；
-     `latest-lineage-23.2` 会在手动运行开始时查询 LineageOS 最新提交并直接
-     用于本次编译。后一种产物以 `UNAPPROVED_LATEST_` 开头，保存 30 天。
-5. 构建成功后下载 kernel artifact，并核对其中的 SHA-256 和 provenance。
-
-默认的正式构建仍使用仓库已经批准的固定版本。只有你在手动 Actions 中明确选择
-`latest-lineage-23.2` 时，本次构建才会追踪上游；它不会改变仓库书签，也不会
-自动合并或刷机。SukiSU、SUSFS、编译器和打包工具仍分别固定，不会一起更新。
-手动最新源码构建结束后，无论成功、失败或取消，GitHub 都会 `@Chinohana` 并
-通过账户的通知邮件设置发送结果。
-
-工作流提供四种配置：
-
-| 配置 | 内容 | 状态 |
-| --- | --- | --- |
-| `smoke` | SUSFS 核心与日志 | 已真机验证 |
-| `minimal-mount` | `smoke` + SUS Mount | 已真机验证 |
-| `extended-stat` | `minimal-mount` + SUS Kstat | 仅完成编译审计 |
-| `extended-full` | 九项官方 v2.2 功能 | 默认；已安装并启动验证 |
-
-关闭 **Enable SUSFS** 时，`SUSFS profile` 被忽略，产物不含 SUSFS；SUSFS 与
-SELinux hide 可自由组合（四个组合均受 CI 审计）。
-
-每次构建都会重新检查固定源码版本、补丁落点、最终内核配置、符号、编译警告和
-Image 大小。内核、SukiSU、SUSFS、Clang 和 AnyKernel3 都使用固定提交，避免
-上游更新悄悄改变结果。
-
-## 内核安全更新怎样进入本仓库
-
-仓库每天检查一次 LineageOS `lineage-23.2` 内核分支。发现新提交时，只会创建
-一个候选 PR，不会自动合并、刷机或替换正式内核。
-
-候选 PR 会先确认新提交确实是该分支的最新提交，而且位于旧提交之后。云端随后
-编译纯 SukiSU、SELinux hide、SUSFS `extended-stat` 和当前使用的
-`extended-full + SELinux hide`，并重复配置、符号、补丁及 Image 大小检查。
-测试包名称以 `CANDIDATE_` 开头，保存 30 天。编译失败时，仓库会打开或更新
-`Kernel update blocked: lineage-23.2` Issue，防止更新悄悄卡住。
-
-云端通过不等于可以采用。下载当前配置的候选包后，按以下顺序在 OnePlus 8T
-上测试：
-
-1. 核对候选页面给出的 SHA-256；
-2. 先用 `fastboot boot` 临时启动，不要直接刷入；
-3. 检查开机、ADB、root、加密存储、SELinux Enforcing 和主要硬件；
-4. 检查 SUSFS，并来回开关一次 SELinux hide；
-5. 确认 dmesg 与 pstore 没有 panic、oops、BUG、UAF 或 lockup；
-6. 测试完全通过后，在 GitHub Actions 中运行 **Approve kernel candidate**，勾选
-   唯一的真机测试确认项。云端会自动定位唯一开放且构建成功的候选 PR，下载精确
-   产物，并重新计算构建指纹与 ZIP SHA-256；不再要求手工复制任何编号或哈希。
-
-GitHub 云端无法访问物理手机，因此不会假装“自动读取”手机 ROM 指纹。审批记录
-改为如实保存操作者、候选提交、云端构建、自动核验的包哈希和真机测试声明。
-审批工作流不会连接、刷写、重启或以任何方式修改手机。
-
-批准记录只对那个 PR 的那次内容有效。内核、补丁、工具版本或构建脚本中任何
-一项改变，都必须重新编译并重新真机测试。最终仍需要人工审核并点击合并。
-
-首次迁移新流程时也会比较旧批准构建的 `Image`、配置和 `System.map`。三项完全
-相同才能沿用旧真机结果；只要一项不同，就和普通内核更新一样重新真机测试。
-
-> [!IMPORTANT]
-> 跟随内核仓库只能取得内核里的修复。LineageOS 月更还可能包含 Android 系统、
-> 驱动二进制文件和应用层修复；更新内核不代表已经包含整个月度安全更新。
-
-## 固定的其他上游项目
-
-- **SukiSU**：`builtin` 分支是支持传统 Manual Hook（非 GKI 内联调用、
-  无需 KPROBES）的分支，本仓库候选固定提交 `0af2cf9`。SukiSU 的
-  `main` 分支（v4.x）是新一代架构，`CONFIG_KSU` 硬依赖 `CONFIG_KPROBES`
-  且使用运行时 syscall 打补丁与 LSM Hook，与本项目"KPM/kprobes 关闭、
-  禁止运行时打补丁"的约束冲突，因此不用于本仓库。
-- **AnyKernel3**：候选固定提交 `020dfec` 仅作为经过审计的 ZIP 打包基础。本项目
-  仍把默认 `dump_boot` / `write_boot` 流程改为 `split_boot` / `flash_boot`，
-  只替换 `boot` 分区中的内核 `Image`，并由工作流检查不存在 ramdisk 修改命令；
-  上游新增的 vendor ramdisk 解包能力不会在本项目包中启用。
-
-本仓库目前只支持 LineageOS 23.2，不为 LineageOS 24.0 产出正式包。将来手机
-正式升级到 24.0 后，会建立一套新的内核书签并重新完成首次真机批准。
-
-## 安装前必须知道
-
-Actions 产物是 AnyKernel3 ZIP，不是与你当前 ROM 完全匹配的独立 `boot.img`。
-为了避免混入错误的 ramdisk 或 DTB，本项目不会自动读取、修改或刷写手机。
-
-推荐的安全流程是：
-
-1. 确认 Bootloader 已解锁，并检查当前活动槽位；
-2. 分别备份 `boot_a` 和 `boot_b`，记录 SHA-256；
-3. 只替换当前原始 boot 镜像里的内核 `Image`，不要修改 ramdisk、DTB、DTBO、
-   `vendor_boot` 或 `init_boot`；
-4. 先使用 `fastboot boot` 临时启动测试；
-5. 确认系统、root、存储和主要硬件正常后，才考虑写入当前活动槽位；
-6. 不要自动切槽，也不要同时覆盖两个 boot 槽位。
-
-如果你不熟悉 boot 镜像拆包、Fastboot 临时启动和恢复流程，请不要直接刷写。
-
-## 出现问题时
-
-遇到无法开机、功能异常或内核报错时：
-
-1. 停止继续测试，不要反复刷写；
-2. 进入 Fastboot；
-3. 将事先备份的原始 boot 镜像写回原活动槽位；
-4. 保持另一槽位不变；
-5. 保存 dmesg 和 pstore，便于定位问题。
-
-仓库不会自动刷机、自动切换槽位或创建 Release。
-
-## 给开发者
-
-详细的固定提交、Linux 4.19 适配点、CI 阻断条件和真机验证记录见
-[`docs/SUSFS-EXPERIMENT.md`](docs/SUSFS-EXPERIMENT.md)。
-
-主要上游项目：
-
-- [SukiSU Ultra](https://github.com/SukiSU-Ultra/SukiSU-Ultra)
-- [SUSFS4KSU](https://gitlab.com/simonpunk/susfs4ksu)
-- [AnyKernel3](https://github.com/osm0sis/AnyKernel3)
-- [LineageOS OnePlus SM8250 kernel](https://github.com/LineageOS/android_kernel_oneplus_sm8250)
+这些历史文档中的 23.2 真机结果保留原义，不代表本实验已获批准。

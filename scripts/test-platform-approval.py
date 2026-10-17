@@ -138,6 +138,50 @@ class PlatformApproval(unittest.TestCase):
                 self.assertEqual(run.returncode, 0, run.stderr)
                 self.assertEqual(run.stdout.strip(), verifier.compute_fingerprint(self.root)[0])
 
+    def check_transition(self, upstream_sha):
+        script = self.root / ".github/scripts/validate-kernel-candidate.sh"
+        if "platform_changed" not in script.read_text():
+            self.skipTest("Transition inspection is introduced by the experimental branch")
+        self.platform("23.2")
+        old_head = git(self.root, "rev-parse", "HEAD")
+        self.platform("24.0")
+        wrapper = self.root / "fake-bin/git"
+        wrapper.parent.mkdir()
+        wrapper.write_text('''#!/usr/bin/env bash
+if test "$1" = ls-remote; then
+  test "$3" = refs/heads/lineage-24.0 || exit 92
+  echo checked > upstream-ref-checked
+  printf '%s\\trefs/heads/lineage-24.0\\n' "$TEST_UPSTREAM_SHA"
+else
+  exec "$REAL_GIT" "$@"
+fi
+''', newline="\n")
+        wrapper.chmod(0o755)
+        env = {**os.environ, "TEST_UPSTREAM_SHA": upstream_sha, "TEST_BASE": old_head}
+        command = '''export REAL_GIT="$(command -v git)"
+export PATH="$PWD/fake-bin:$PATH"
+export GITHUB_OUTPUT="$PWD/inspection.txt"
+bash .github/scripts/validate-kernel-candidate.sh . "$TEST_BASE"
+'''
+        run = subprocess.run([BASH, "-c", command], cwd=self.root, env=env,
+                             capture_output=True, text=True)
+        return run
+
+    def test_same_sha_transition_checks_ref_and_requires_build(self):
+        run = self.check_transition(KERNEL)
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertTrue((self.root / "upstream-ref-checked").exists())
+        outputs = (self.root / "inspection.txt").read_text()
+        self.assertIn("needs_build=true", outputs)
+        self.assertIn("platform_changed=true", outputs)
+        self.assertIn("kernel_changed=false", outputs)
+        self.assertIn(f"old_kernel={KERNEL}", outputs)
+
+    def test_same_sha_transition_rejects_stale_upstream_pin(self):
+        run = self.check_transition("1" * 40)
+        self.assertNotEqual(run.returncode, 0)
+        self.assertIn("no longer the latest lineage-24.0", run.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

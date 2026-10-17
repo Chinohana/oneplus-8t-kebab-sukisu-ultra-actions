@@ -47,7 +47,7 @@ inputs="$output_dir/build-inputs.txt"
 {
   echo 'fingerprint_schema=1'
   echo 'device=kebab'
-  echo 'rom=LineageOS 23.2'
+  echo "rom=LineageOS $ROM_VERSION"
   echo "kernel_repository=$KERNEL_REPOSITORY"
   echo "kernel_branch=$KERNEL_BRANCH"
   echo "kernel_commit=$kernel_commit"
