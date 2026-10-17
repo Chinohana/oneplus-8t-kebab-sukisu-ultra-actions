@@ -1,0 +1,19 @@
+name: Control script tests
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  platform-approval:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Test trusted platform approval and fingerprint parity
+        run: python3 scripts/test-platform-approval.py
