@@ -85,7 +85,7 @@ jobs:
               jq -r \
                 '[.artifacts[]
                   | select(.expired == false)
-                  | select(.name | startswith("CANDIDATE_SukiSU_kebab_extended-full-hide_"))]
+                  | select(.name | test("^CANDIDATE_SukiSU_kebab_(LOS(23[.]2|24[.]0)_)?extended-full-hide_"))]
                  | if length == 1 then .[0].id else empty end' \
                 "$artifact_json"
             )"
