@@ -1,9 +1,9 @@
-# OnePlus 8T SukiSU Ultra + SUSFS v2.2
+# OnePlus 8T SukiSU Ultra + SUSFS v2.3
 
 [![Build](https://github.com/Chinohana/oneplus-8t-kebab-sukisu-ultra-actions/actions/workflows/build-sukisu-ultra.yml/badge.svg?branch=main)](https://github.com/Chinohana/oneplus-8t-kebab-sukisu-ultra-actions/actions/workflows/build-sukisu-ultra.yml)
 
 这是一个为 OnePlus 8T（`kebab` / KB2000）制作的内核构建项目。它在固定的
-LineageOS 23.2 Linux 4.19 内核上集成了 SukiSU Ultra 和 SUSFS v2.2。
+LineageOS 23.2 Linux 4.19 内核上集成了 SukiSU Ultra 和 SUSFS v2.3。
 
 > [!CAUTION]
 > 这个项目只适用于下方列出的设备和系统版本，目前仍是测试版本。刷入错误的
@@ -17,13 +17,17 @@ LineageOS 23.2 Linux 4.19 内核上集成了 SukiSU Ultra 和 SUSFS v2.2。
 | 设备 | OnePlus 8T（`kebab`，已测试型号 KB2000） |
 | 系统 | LineageOS 23.2 / Android 16 |
 | 内核 | Linux 4.19，LineageOS `lineage-23.2` 分支；确切提交见内核书签 |
-| Root | SukiSU Ultra `builtin`，候选版本 40959（待真机验证） |
-| SUSFS | v2.2.0，NON-GKI，Inline Hook |
+| Root | SukiSU Ultra `builtin`，候选版本 41001（待真机验证） |
+| SUSFS | v2.3.0，NON-GKI，Inline Hook |
 | 编译器 | Android Clang `r563880` |
 
 不满足这些条件时，请不要使用本项目产物。
 
 ## 当前状态
+
+本次更新分支为 SUSFS v2.3 / SukiSU 41001 候选，尚需重新完成云端构建和真机
+验证。下方既有启动、安装和硬件检查记录来自更新前的版本，不能作为本候选的
+批准依据。最新更新见 [`docs/UPSTREAMS-20261017.md`](docs/UPSTREAMS-20261017.md)。
 
 `main` 默认构建 `extended-full`，也就是当前已经在开发设备上启动并安装过的
 完整 SUSFS 配置。
@@ -35,7 +39,7 @@ LineageOS 23.2 Linux 4.19 内核上集成了 SukiSU Ultra 和 SUSFS v2.2。
 - 将同一个已测试镜像写入当前活动的 `boot_b`；
 - SukiSU root、ADB、SELinux Enforcing 和加密存储正常；
 - Wi-Fi、移动网络、相机、指纹、音频和文件读写正常；
-- `susfs4ksu v2.2.0-R28` 正常启动，sdcard 监控正常；
+- `susfs4ksu v2.3.0-R28` 正常启动，sdcard 监控正常；
 - pstore 为空，未发现 panic、oops、BUG、UAF 或 lockup。
 
 尚未完成长期稳定性观察和大量重复冷启动测试，因此这里的“可用”不代表已经达到
@@ -43,7 +47,7 @@ LineageOS 23.2 Linux 4.19 内核上集成了 SukiSU Ultra 和 SUSFS v2.2。
 
 ## SUSFS 功能
 
-`extended-full` 包含当前官方 SUSFS v2.2 提供的九项功能：
+`extended-full` 包含当前官方 SUSFS v2.3 提供的九项功能：
 
 - SUS Path
 - SUS Mount
@@ -56,7 +60,7 @@ LineageOS 23.2 Linux 4.19 内核上集成了 SukiSU Ultra 和 SUSFS v2.2。
 - SUSFS Logging
 
 旧版 Try Umount、自动添加挂载、Magic Mount 和 OverlayFS Auto Kstat 已被
-SUSFS v2.2 废弃，因此没有重新加入。KPM 和 kprobes 也保持关闭。
+SUSFS 自 v2.2 起废弃，因此没有重新加入。KPM 和 kprobes 也保持关闭。
 
 编译进内核不等于自动创建隐藏规则。首次启动时应保持自定义路径、映射、Kstat、
 重定向和伪装设置为空，再按需逐项配置。
@@ -65,8 +69,8 @@ SUSFS v2.2 废弃，因此没有重新加入。KPM 和 kprobes 也保持关闭�
 
 | 分支 | 用途 |
 | --- | --- |
-| [`main`](https://github.com/Chinohana/oneplus-8t-kebab-sukisu-ultra-actions/tree/main) | SUSFS v2.2 完整版 + 可选的“隐藏 SELinux 修改”功能 |
-| [`SUSFS`](https://github.com/Chinohana/oneplus-8t-kebab-sukisu-ultra-actions/tree/SUSFS) | 仅 SUSFS v2.2 完整版，不含 SELinux 隐藏（旧 main 快照） |
+| [`main`](https://github.com/Chinohana/oneplus-8t-kebab-sukisu-ultra-actions/tree/main) | SUSFS v2.3 完整版 + 可选的“隐藏 SELinux 修改”功能 |
+| [`SUSFS`](https://github.com/Chinohana/oneplus-8t-kebab-sukisu-ultra-actions/tree/SUSFS) | 仅 SUSFS v2.3 完整版，不含 SELinux 隐藏（旧 main 快照） |
 | [`legacy`](https://github.com/Chinohana/oneplus-8t-kebab-sukisu-ultra-actions/tree/legacy) | 不含 SUSFS 的旧版 SukiSU 内核，固定在 `1bc3fb3` |
 | `experiment/susfs-v2.2-sm8250-4.19` | SUSFS 移植过程的历史开发分支 |
 | `experiment/selinux-hide-sm8250-4.19` | “隐藏 SELinux 修改”移植的历史实验分支 |
@@ -94,7 +98,7 @@ UID（≥10000）读取 `/sys/fs/selinux` 的 policy/status 时看到的是 KSU 
 2. 选择 **Build kebab SukiSU Ultra**。
 3. 点击 **Run workflow**。
 4. 按需选择选项（默认全部开启）：
-   - **Enable SUSFS**：编译 SUSFS v2.2；关闭时产物为纯 SukiSU builtin 内核。
+   - **Enable SUSFS**：编译 SUSFS v2.3；关闭时产物为纯 SukiSU builtin 内核。
    - **SUSFS profile**：SUSFS 功能档位（见下表），仅在 Enable SUSFS 开启时生效。
    - **Enable SELinux hide**：编译“隐藏 SELinux 修改”（Linux 4.19 回移植）。
    - **Use AnyKernel3**：打包为 AnyKernel3 ZIP；关闭时产物为 raw
@@ -172,11 +176,11 @@ GitHub 云端无法访问物理手机，因此不会假装“自动读取”手�
 ## 固定的其他上游项目
 
 - **SukiSU**：`builtin` 分支是支持传统 Manual Hook（非 GKI 内联调用、
-  无需 KPROBES）的分支，本仓库候选固定提交 `70fa0e0`。SukiSU 的
+  无需 KPROBES）的分支，本仓库候选固定提交 `0af2cf9`。SukiSU 的
   `main` 分支（v4.x）是新一代架构，`CONFIG_KSU` 硬依赖 `CONFIG_KPROBES`
   且使用运行时 syscall 打补丁与 LSM Hook，与本项目"KPM/kprobes 关闭、
   禁止运行时打补丁"的约束冲突，因此不用于本仓库。
-- **AnyKernel3**：固定提交 `af770f7` 仅作为经过审计的 ZIP 打包基础。本项目
+- **AnyKernel3**：候选固定提交 `020dfec` 仅作为经过审计的 ZIP 打包基础。本项目
   仍把默认 `dump_boot` / `write_boot` 流程改为 `split_boot` / `flash_boot`，
   只替换 `boot` 分区中的内核 `Image`，并由工作流检查不存在 ramdisk 修改命令；
   上游新增的 vendor ramdisk 解包能力不会在本项目包中启用。

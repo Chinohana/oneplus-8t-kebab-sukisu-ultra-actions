@@ -1,4 +1,8 @@
-# SUSFS v2.2 build and device gates
+# SUSFS build and device gates
+
+The current update branch proposes v2.3 / SukiSU 41001. Its new adaptations and
+validation requirements are recorded in [UPSTREAMS-20261017.md](UPSTREAMS-20261017.md).
+The historical v2.2 device results below do not approve this new candidate.
 
 This document applies to the canonical `main` SUSFS line. The original
 non-SUSFS baseline is preserved at `legacy@1bc3fb3`; the historical
@@ -9,11 +13,11 @@ non-SUSFS baseline is preserved at `legacy@1bc3fb3`; the historical
 - LineageOS kernel (`lineage-23.2`):
   `98a7970af93b7e01ee77156e7fa0eb7e059a57f0`
 - SukiSU Ultra `builtin`:
-  `70fa0e092a2c81060823f8ae526eac14fdda2930` (candidate driver version 40959)
+  `0af2cf9cef7dc2239fa7ebb3f7898830a1087e26` (candidate driver version 41001)
 - SukiSU 4.2 compatibility: separate no-su and zygote_next process flags,
   plus mount lookup protection for zygote_next on the Linux 4.19 manual-hook port.
-- Official SUSFS v2.2 source:
-  `8eade9cd4aed3efddc9ff30b2e48d2d9667ad77d`
+- Official SUSFS v2.3 candidate source:
+  `5369359dbd10f6dd8cbdd59d1df7b788b29b168c`
 - Exact-base SM8250 v2.1 placement reference:
   `ac5f7e57d3f1d4ed065940960d7348c8baae3fb9`
 - Android Clang: `r563880`
