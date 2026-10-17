@@ -20,6 +20,7 @@ jobs:
     outputs:
       needs_build: ${{ steps.inspect.outputs.needs_build }}
       kernel_changed: ${{ steps.inspect.outputs.kernel_changed }}
+      platform_changed: ${{ steps.inspect.outputs.platform_changed }}
       old_kernel: ${{ steps.inspect.outputs.old_kernel }}
       new_kernel: ${{ steps.inspect.outputs.new_kernel }}
       fingerprint: ${{ steps.fingerprint.outputs.fingerprint }}
@@ -73,14 +74,15 @@ jobs:
             --arg old "${{ steps.inspect.outputs.old_kernel }}" \
             --arg new "${{ steps.inspect.outputs.new_kernel }}" \
             --arg fingerprint "${{ steps.fingerprint.outputs.fingerprint }}" \
-            '{schema:1, status:"CANDIDATE", pr:($pr|tonumber), head_sha:$head, old_kernel:$old, new_kernel:$new, build_fingerprint:$fingerprint}' \
+            --arg platform_changed "${{ steps.inspect.outputs.platform_changed }}" \
+            '{schema:1, status:"CANDIDATE", pr:($pr|tonumber), head_sha:$head, old_kernel:$old, new_kernel:$new, platform_changed:($platform_changed == "true"), rom:"LineageOS 24.0", android_api:37, build_fingerprint:$fingerprint}' \
             > candidate-metadata/candidate.json
 
       - name: Upload candidate metadata
         if: steps.inspect.outputs.needs_build == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: CANDIDATE_kernel-lineage-23.2_metadata
+          name: CANDIDATE_kernel-lineage-24.0_metadata
           path: candidate-metadata
           if-no-files-found: error
           retention-days: 30
