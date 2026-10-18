@@ -19,16 +19,16 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const title = 'Kernel update blocked: lineage-23.2';
+            const title = 'Kernel update blocked: lineage-24.0';
             const notifyUser = 'Chinohana';
             const run = context.payload.workflow_run;
             const { owner, repo } = context.repo;
             const manualLatest =
               run.event === 'workflow_dispatch' &&
-              run.display_title === 'UNAPPROVED_LATEST LineageOS 23.2 build';
+              run.display_title === 'UNAPPROVED_LATEST LineageOS 24.0 build';
 
             if (manualLatest) {
-              const manualTitle = 'Manual latest LineageOS 23.2 build result';
+              const manualTitle = 'Manual latest LineageOS 24.0 build result';
               const allIssues = await github.paginate(
                 github.rest.issues.listForRepo,
                 { owner, repo, state: 'all', per_page: 100 }
@@ -39,7 +39,7 @@ jobs:
               const icon = run.conclusion === 'success' ? '✅' :
                 (run.conclusion === 'failure' ? '❌' : '⚠️');
               const summary = [
-                `@${notifyUser} ${icon} Manual latest LineageOS 23.2 build finished: **${run.conclusion}**.`,
+                `@${notifyUser} ${icon} Manual latest LineageOS 24.0 build finished: **${run.conclusion}**.`,
                 '',
                 `Run: [${run.name} #${run.run_number}](${run.html_url})`,
                 `Head commit: \`${run.head_sha}\``,
@@ -73,7 +73,7 @@ jobs:
             const files = await github.paginate(github.rest.pulls.listFiles, {
               owner, repo, pull_number: pull.number, per_page: 100
             });
-            if (!files.some(file => file.filename === 'pins/kernel-lineage-23.2')) {
+            if (!files.some(file => file.filename === 'pins/kernel-lineage-24.0')) {
               core.info('This is not a LineageOS kernel bookmark update; no notification sent.');
               return;
             }
@@ -98,7 +98,7 @@ jobs:
               await github.rest.issues.createComment({
                 owner, repo, issue_number: pull.number,
                 body: [
-                  `@${notifyUser} ✅ LineageOS 23.2 kernel candidate cloud build passed.`,
+                  `@${notifyUser} ✅ LineageOS 24.0 kernel candidate cloud build passed.`,
                   '',
                   `Run: [${run.name} #${run.run_number}](${run.html_url})`,
                   '',
@@ -118,7 +118,7 @@ jobs:
             if (run.conclusion === 'cancelled' || run.conclusion === 'skipped') {
               await github.rest.issues.createComment({
                 owner, repo, issue_number: pull.number,
-                body: `@${notifyUser} ⚠️ LineageOS 23.2 kernel candidate run ${run.conclusion}: [open run ${run.id}](${run.html_url}). No kernel was merged, installed or flashed.`
+                body: `@${notifyUser} ⚠️ LineageOS 24.0 kernel candidate run ${run.conclusion}: [open run ${run.id}](${run.html_url}). No kernel was merged, installed or flashed.`
               });
               return;
             }
@@ -131,7 +131,7 @@ jobs:
               .map(job => `- ${job.name}: ${job.conclusion}`)
               .join('\n') || '- Unknown candidate stage';
             const body = [
-              'The automatic LineageOS 23.2 kernel candidate could not finish.',
+              'The automatic LineageOS 24.0 kernel candidate could not finish.',
               '',
               `Run: [${run.name} #${run.run_number}](${run.html_url})`,
               `Head commit: \`${run.head_sha}\``,
@@ -171,5 +171,5 @@ jobs:
 
             await github.rest.issues.createComment({
               owner, repo, issue_number: pull.number,
-              body: `@${notifyUser} ❌ LineageOS 23.2 kernel candidate cloud build failed. See #${issueNumber} and [run ${run.id}](${run.html_url}). Nothing was merged, installed or flashed.`
+              body: `@${notifyUser} ❌ LineageOS 24.0 kernel candidate cloud build failed. See #${issueNumber} and [run ${run.id}](${run.html_url}). Nothing was merged, installed or flashed.`
             });

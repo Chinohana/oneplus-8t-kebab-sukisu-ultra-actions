@@ -5,4 +5,4 @@
 /.gitmodules @Chinohana
 /config/ @Chinohana
 /patches/ @Chinohana
-/pins/kernel-lineage-23.2 @Chinohana
+/pins/kernel-lineage-* @Chinohana
