@@ -1,6 +1,6 @@
 name: Build kebab SukiSU Ultra
 
-run-name: ${{ inputs.kernel_source == 'latest-lineage-23.2' && 'UNAPPROVED_LATEST LineageOS 23.2 build' || 'Build kebab SukiSU Ultra' }}
+run-name: ${{ inputs.kernel_source == 'latest-lineage-24.0' && 'UNAPPROVED_LATEST LineageOS 24.0 build' || 'Build kebab SukiSU Ultra' }}
 
 on:
   push:
@@ -68,13 +68,13 @@ on:
         type: boolean
         default: true
       kernel_source:
-        description: "Kernel source: approved bookmark, or latest LineageOS 23.2 at run time"
+        description: "Kernel source: approved bookmark, or latest LineageOS 24.0 at run time"
         required: true
         type: choice
         default: approved-pin
         options:
           - approved-pin
-          - latest-lineage-23.2
+          - latest-lineage-24.0
 
 permissions:
   contents: read
@@ -89,14 +89,14 @@ env:
   ENABLE_SELINUX_HIDE: ${{ github.event_name == 'push' || inputs.enable_selinux_hide }}
   USE_ANYKERNEL: ${{ github.event_name == 'push' || inputs.use_anykernel }}
   USE_CCACHE: ${{ github.event_name == 'push' || inputs.use_ccache }}
-  BUILD_CHANNEL: ${{ inputs.build_channel || 'approved' }}
+  BUILD_CHANNEL: ${{ inputs.build_channel || (github.ref == 'refs/heads/main' && 'approved' || 'candidate') }}
   BASE_KERNEL_COMMIT: ${{ inputs.base_kernel_commit || '' }}
   KERNEL_SOURCE_MODE: ${{ inputs.kernel_source || 'approved-pin' }}
 
 jobs:
   audit-build:
     name: kebab SM8250 4.19
-    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/experiment/lineage-24.0')
     runs-on: ubuntu-24.04
     timeout-minutes: 360
     env:
@@ -108,7 +108,7 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Load immutable pins and resolve the LineageOS 23.2 kernel
+      - name: Load immutable pins and resolve the LineageOS 24.0 kernel
         shell: bash
         run: |
           set -euo pipefail
@@ -119,7 +119,7 @@ jobs:
           )"
           case "$KERNEL_SOURCE_MODE" in
             approved-pin) ;;
-            latest-lineage-23.2)
+            latest-lineage-24.0)
               test "$GITHUB_EVENT_NAME" = workflow_dispatch
               latest_kernel="$(
                 git ls-remote "$KERNEL_REPOSITORY" \
@@ -154,7 +154,7 @@ jobs:
               ;;
           esac
           bash .github/scripts/resolve-kernel-pin.sh "$GITHUB_WORKSPACE"
-          test "$KERNEL_BRANCH" = lineage-23.2
+          test "$KERNEL_BRANCH" = lineage-24.0
 
       - name: Enforce branch and immutable legacy baseline
         shell: bash
@@ -171,7 +171,7 @@ jobs:
               ;;
             unapproved_latest)
               test "$GITHUB_EVENT_NAME" = workflow_dispatch
-              test "$KERNEL_SOURCE_MODE" = latest-lineage-23.2
+              test "$KERNEL_SOURCE_MODE" = latest-lineage-24.0
               ;;
             *)
               echo "::error::Unknown build channel: $BUILD_CHANNEL"
@@ -1973,7 +1973,7 @@ jobs:
             string_feature="${string_feature} SELinux hide"
           fi
           sed -i \
-            "s/^kernel.string=.*/kernel.string=${BUILD_CHANNEL^^} SukiSU Ultra kebab ${string_feature} KSU${SUKISU_DRIVER_VERSION}/" \
+            "s/^kernel.string=.*/kernel.string=${BUILD_CHANNEL^^} SukiSU Ultra kebab LOS${ROM_VERSION} ${string_feature} KSU${SUKISU_DRIVER_VERSION}/" \
             AnyKernel3/anykernel.sh
           sed -i 's/^do.devicecheck=.*/do.devicecheck=1/' \
             AnyKernel3/anykernel.sh
@@ -2000,7 +2000,7 @@ jobs:
           sed -i 's/^write_boot;.*/flash_boot;/' AnyKernel3/anykernel.sh
 
           grep -Fqx \
-            "kernel.string=${BUILD_CHANNEL^^} SukiSU Ultra kebab ${string_feature} KSU${SUKISU_DRIVER_VERSION}" \
+            "kernel.string=${BUILD_CHANNEL^^} SukiSU Ultra kebab LOS${ROM_VERSION} ${string_feature} KSU${SUKISU_DRIVER_VERSION}" \
             AnyKernel3/anykernel.sh
           grep -q '^device.name1=OnePlus8T$' AnyKernel3/anykernel.sh
           grep -q '^device.name2=KB2000$' AnyKernel3/anykernel.sh
@@ -2026,7 +2026,7 @@ jobs:
           fi
 
           rm -f AnyKernel3/README.md
-          package_name="${BUILD_CHANNEL^^}_SukiSU_kebab_${feature_tags}_K${KERNEL_COMMIT:0:7}_SU${SUKISU_COMMIT:0:7}_KSU${SUKISU_DRIVER_VERSION}"
+          package_name="${BUILD_CHANNEL^^}_SukiSU_kebab_LOS${ROM_VERSION}_${feature_tags}_K${KERNEL_COMMIT:0:7}_SU${SUKISU_COMMIT:0:7}_KSU${SUKISU_DRIVER_VERSION}"
           (
             cd AnyKernel3
             zip -r9 "../${package_name}.zip" . \
@@ -2057,7 +2057,7 @@ jobs:
             string_feature="${string_feature} SELinux hide"
           fi
 
-          package_name="${BUILD_CHANNEL^^}_RAW_SukiSU_kebab_${feature_tags}_K${KERNEL_COMMIT:0:7}_SU${SUKISU_COMMIT:0:7}_KSU${SUKISU_DRIVER_VERSION}"
+          package_name="${BUILD_CHANNEL^^}_RAW_SukiSU_kebab_LOS${ROM_VERSION}_${feature_tags}_K${KERNEL_COMMIT:0:7}_SU${SUKISU_COMMIT:0:7}_KSU${SUKISU_DRIVER_VERSION}"
           echo "PACKAGE_NAME=$package_name" >> "$GITHUB_ENV"
           echo "KERNEL_ARTIFACT_NAME=$package_name" >> "$GITHUB_ENV"
 
@@ -2088,7 +2088,8 @@ jobs:
             "kernel_experiment/$SELECTED_OUT/arch/arm64/boot/Image" \
             > artifacts/kernel/selected-build-files.sha256
 
-          if test "$KERNEL_COMMIT" = "$SM8250_REFERENCE_BASE_COMMIT" &&
+          if test "$ROM_VERSION" = 23.2 &&
+             test "$KERNEL_COMMIT" = "$SM8250_REFERENCE_BASE_COMMIT" &&
              test "$ENABLE_SUSFS" = true &&
              test "$PROFILE" = extended-full &&
              test "$ENABLE_SELINUX_HIDE" = true; then
@@ -2119,7 +2120,8 @@ jobs:
             echo "status=${BUILD_CHANNEL^^}_DO_NOT_AUTO_INSTALL"
             echo "device=kebab"
             echo "model=OnePlus 8T"
-            echo "rom=LineageOS 23.2"
+            echo "rom=LineageOS $ROM_VERSION"
+            echo "android_api=$ANDROID_API"
             if test "$ENABLE_SUSFS" = "true"; then
               echo "profile=$PROFILE"
             else
