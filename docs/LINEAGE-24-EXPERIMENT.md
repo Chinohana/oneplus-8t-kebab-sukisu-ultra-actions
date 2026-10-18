@@ -1,99 +1,47 @@
-# LineageOS 24.0 migration and validation
+# LineageOS 24.0 迁移记录
 
-This branch targets OnePlus 8T / kebab (tested hardware model KB2000),
-LineageOS 24.0 / Android 17 (API 37). The owner accepted sustained stable
-operation on 2026-10-18 and authorized the completed migration to main.
-The starting 23.2 main commit is `7cad005b0ff85497d2c80171725022ce95062db8`.
+2026-10-18，OnePlus 8T（`kebab` / KB2000）的 LineageOS 24.0 内核完成真机批准并合入 `main`。测试系统为 `24.0-20261016-NIGHTLY-kebab`，Android 17 / API 37；机主在持续使用后确认运行稳定。
 
-## Inputs and scope
+## 迁移改了什么
 
-On 2026-10-17 both official `lineage-23.2` and `lineage-24.0` kernel refs
-pointed to `98a7970af93b7e01ee77156e7fa0eb7e059a57f0`. The new 24.0 bookmark
-deliberately keeps this SHA. SukiSU builtin 41001, SUSFS v2.3, Clang r563880,
-NDK and AnyKernel3 remain fixed to the main branch's inputs. No Android 17
-specific kernel-hook rewrite is justified by a branch-name change alone.
+迁移从 23.2 主线提交 `7cad005b0ff85497d2c80171725022ce95062db8` 开始。2026-10-17 核对上游时，`lineage-23.2` 和 `lineage-24.0` 都指向 `98a7970af93b7e01ee77156e7fa0eb7e059a57f0`，因此新的 24.0 内核书签沿用了这个提交。
 
-The changes select the 24.0 upstream branch and bookmark, distinguish the ROM
-in fingerprints, package names, provenance and approval records, and verify
-upstream refs even when a platform transition keeps the same kernel SHA.
-The old 23.2 migration hashes remain historical evidence only.
+SukiSU `builtin` 41001、SUSFS v2.3、Clang r563880、NDK 和 AnyKernel3 沿用迁移起点的固定版本。内核源码相同，本次没有为 Android 17 重写 Root Hook。
 
-Cloud candidates build four combinations: SukiSU only, SELinux hide only,
-SUSFS extended-stat, and extended-full with SELinux hide. A manual dispatch
-on `experiment/lineage-24.0` also produces a CANDIDATE package. It cannot
-produce an approved-channel artifact on that branch.
+改动集中在目标平台：切换上游分支和内核书签，让构建指纹、包名、provenance 和批准记录区分 ROM 版本。平台切换时，即使内核 SHA 相同，也会核验上游 ref 并要求新的真机结果。
 
-## Approval prerequisite
+云端构建了纯 SukiSU、SELinux hide、SUSFS `extended-stat`、`extended-full + SELinux hide` 四种组合。实验分支 `experiment/lineage-24.0` 的手动构建使用 `CANDIDATE_` 通道。
 
-The separate `support/lineage-24-approval` branch updates the trusted main
-verifier to recognize both legacy 23.2 artifacts and explicitly configured
-24.0 artifacts. It leaves the main build target on 23.2. Merge that tested
-verifier support before attempting cloud approval of a 24.0 candidate.
-Candidate repository code is still never executed by the trusted verifier.
+## 构建与批准
 
-## Android 17 device validation
+先通过独立的 `support/lineage-24-approval` 分支，让受信任的主线验证器识别 24.0 产物，同时保留对旧 23.2 产物的支持；再核验 24.0 候选。验证器使用主线代码，不执行候选仓库中的代码。
 
-The kernel/source equality does not transfer the 23.2 phone-test result.
-Before testing, obtain the exact installed 24.0 build identity and original
-boot images, retain recovery files, and prepare a test boot by replacing only
-the kernel in that 24.0 boot. Preserve its ramdisk, DTB and DTBO. Do not use
-a complete 23.2 boot image or change slots automatically.
+| 记录 | 标识 |
+| --- | --- |
+| 真机测试候选 | `7243b36efb97f858ed9332b689298ae543ff58a7` |
+| 四种配置构建 | [39033909465](https://github.com/Chinohana/oneplus-8t-kebab-sukisu-ultra-actions/actions/runs/39033909465)、[39103352341](https://github.com/Chinohana/oneplus-8t-kebab-sukisu-ultra-actions/actions/runs/39103352341)，均通过 |
+| 真机批准 | [39103292520](https://github.com/Chinohana/oneplus-8t-kebab-sukisu-ultra-actions/actions/runs/39103292520)，机主确认后核验通过 |
+| 手机活动 boot 分区的 Image SHA-256 | `f49876ef3cd48e8b0462e663c1871857707da8e9fad0c8dcca1ce3be0a86e913` |
+| 批准的 ZIP SHA-256 | `9377d0b3fd26566f6b137feceb3b226e67d5be558806bb4722dc3498de529443` |
 
-Start with temporary boot and check ADB, storage decryption, SELinux Enforcing,
-root authorization and Manager communication, network, camera, fingerprint,
-audio, SUSFS and SELinux-hide off/on behavior. Check dmesg/pstore and repeated
-cold boots. Test Zygisk/modules separately; a working su shell is insufficient
-evidence for module compatibility. Bind approval to the exact candidate head,
-artifact hash and Android 17 environment.
+手机中的内核 Image 与批准候选的哈希一致。
 
-## Main transition and 23.2 archive
+## 真机结果与模块问题
 
-1. Complete cloud audits and Android 17 device validation on the exact candidate.
-2. Record the installed ROM build fingerprint and test evidence with that PR.
-3. Immediately before merging, resolve the live main SHA and preserve it as
-   `archive/lineage-23.2-final`. Verify the remote archive points to that SHA.
-   Never overwrite an existing archive with different contents.
-4. Merge the approved 24.0 PR into main. Retain this document as migration history
-   and update the README validation status using the actual test evidence.
+已检查 root、SELinux Enforcing、SUSFS 功能与隐藏开关、加密存储、连接状态及前后相机预览。隔离模块和恢复模块后各完成了一次普通重启。这轮检查没有覆盖全部硬件功能和第三方模块组合。
 
-The archive is intentionally deferred until the final 23.2 main is known.
-The experiment does not install a ROM, flash a phone, approve itself, create
-an archive prematurely, or merge the platform change automatically.
+测试期间，TA Enhanced v5.53.1 停止了 LineageOS 必需的充电 HAL，导致软重启卡在启动阶段；SELinux hide 开启、关闭时都会出现。重新启动 HAL 后，系统继续启动。随后仅移除模块中的停服务代码，保持内核不变、SELinux hide 开启，两次连续软重启通过。
 
-## Completed transition, 2026-10-18
+问题已报至 [TA Enhanced #46](https://github.com/Enginex0/tricky-addon-enhanced/issues/46)。模块更新可能覆盖手机上的临时修正。
 
-The exact phone-tested candidate was `7243b36efb97f858ed9332b689298ae543ff58a7`.
-All four configurations passed in candidate runs
-[39033909465](https://github.com/Chinohana/oneplus-8t-kebab-sukisu-ultra-actions/actions/runs/39033909465)
-and [39103352341](https://github.com/Chinohana/oneplus-8t-kebab-sukisu-ultra-actions/actions/runs/39103352341).
-The trusted [approval workflow](https://github.com/Chinohana/oneplus-8t-kebab-sukisu-ultra-actions/actions/runs/39103292520)
-recorded a passed exact-head attestation after the owner's acceptance.
+早期日志中还有两个未定位的问题：`mem_cgroup_update_lru_size` 警告，以及启用模块时的 Java 异常 `ClassNotFoundException: android.security.keystore.KeyStoreException`。机主接受本次迁移时保留了这两项记录；后续稳定使用没有证明它们已经修复。原始手机日志保存在本地。
 
-The installed device was OnePlus 8T KB2000, `24.0-20261016-NIGHTLY-kebab`,
-Android 17 / API 37. Its active boot-partition Image matched SHA-256
-`f49876ef3cd48e8b0462e663c1871857707da8e9fad0c8dcca1ce3be0a86e913`.
-The approved package SHA-256 was
-`9377d0b3fd26566f6b137feceb3b226e67d5be558806bb4722dc3498de529443`.
-Root, SELinux Enforcing, SUSFS features and hide switching, encrypted storage,
-connectivity state and front/rear camera previews were checked. Module isolation
-and restoration each included an ordinary reboot. These checks do not constitute
-complete hardware or third-party module coverage.
+## 主线切换与 23.2 归档
 
-TA Enhanced v5.53.1 stopped the required Lineage charging HAL and blocked soft
-reboot with SELinux hide both on and off. Starting the HAL released startup;
-removing only the module's service-stop block allowed two consecutive soft
-reboots with hide enabled. The kernel was unchanged. The issue is reported as
-[TA Enhanced #46](https://github.com/Enginex0/tricky-addon-enhanced/issues/46).
-Module updates may overwrite the local correction.
+合并前，先将最终 23.2 主线保存到 `archive/lineage-23.2-final`，并核对远端指向 `c779ee8c6287a37b21e0eb8ee43e80e7a673043b`。随后合并 [PR #27](https://github.com/Chinohana/oneplus-8t-kebab-sukisu-ultra-actions/pull/27)，合并提交为 `db51e6e710fd9aa1e7bcf529ba9fca05f4027e67`。
 
-An earlier `mem_cgroup_update_lru_size` warning and a module-associated root Java
-`ClassNotFoundException: android.security.keystore.KeyStoreException` remain
-unresolved. The owner's subsequent stability report accepts the migration with
-these findings retained; it does not establish a fix. Raw phone logs remain local.
+## 后续候选怎样测试
 
-Before merge, the live final 23.2 main was preserved and remotely verified at
-`archive/lineage-23.2-final`, commit
-`c779ee8c6287a37b21e0eb8ee43e80e7a673043b`.
-[PR #27](https://github.com/Chinohana/oneplus-8t-kebab-sukisu-ultra-actions/pull/27)
-was merged as `db51e6e710fd9aa1e7bcf529ba9fca05f4027e67`.
-The sections above retain the migration procedure and experimental-branch history.
+使用与手机已安装的 24.0 构建匹配的原始 boot 镜像，备份恢复文件，只替换其中的内核，保留 ramdisk、DTB 和 DTBO。先用 `fastboot boot` 临时启动，保持原活动槽位。
+
+检查 ADB、存储解密、SELinux Enforcing、root 授权与 Manager 通信、网络、相机、指纹、音频、SUSFS、SELinux hide 开关、重复冷启动及 dmesg/pstore。Zygisk 和模块兼容性另行测试。批准记录应对应实际测试的候选提交、产物哈希和 Android 17 环境。
