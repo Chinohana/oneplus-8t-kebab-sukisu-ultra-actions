@@ -13,7 +13,7 @@
 | 设备 | OnePlus 8T（`kebab`，已测试型号 KB2000） |
 | 系统 | LineageOS 24.0 / Android 17 / API 37 |
 | 内核 | Linux 4.19，LineageOS `lineage-24.0` 分支 |
-| Root | SukiSU Ultra `builtin`，41001 |
+| Root | SukiSU Ultra `builtin`，41028 |
 | SUSFS | v2.3.0，NON-GKI |
 | 编译器 | Android Clang `r563880` |
 
@@ -94,7 +94,7 @@ TA Enhanced v5.53.1 会停止 LineageOS 充电 HAL，导致软重启卡在启动
 
 `experiment/susfs-v2.2-sm8250-4.19` 和 `experiment/selinux-hide-sm8250-4.19` 保留了早期移植过程。构建当前版本时，也可以直接在工作流中关闭不需要的功能。
 
-24.0 的迁移和批准记录见 [迁移说明](docs/LINEAGE-24-EXPERIMENT.md)。固定提交、Linux 4.19 适配和历史测试记录见 [SUSFS 移植记录](docs/SUSFS-EXPERIMENT.md)、[SELinux hide 移植记录](docs/SELINUX-HIDE-EXPERIMENT.md)及[迁移起点的上游更新记录](docs/UPSTREAMS-20261017.md)。
+24.0 的迁移和批准记录见 [迁移说明](docs/LINEAGE-24-EXPERIMENT.md)。41028 依赖同步仍为待重新构建、真机测试及批准的候选，见 [2026-10-19 更新记录](docs/UPSTREAMS-20261019.md)。固定提交、Linux 4.19 适配和历史测试记录见 [SUSFS 移植记录](docs/SUSFS-EXPERIMENT.md)、[SELinux hide 移植记录](docs/SELINUX-HIDE-EXPERIMENT.md)及[迁移起点的上游更新记录](docs/UPSTREAMS-20261017.md)。
 
 ## 上游项目
 
