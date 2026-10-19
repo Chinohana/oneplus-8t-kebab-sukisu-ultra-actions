@@ -1,4 +1,24 @@
+diff --git a/kernel/Kconfig b/kernel/Kconfig
+index db57137..88a3b43 100644
+--- a/kernel/Kconfig
++++ b/kernel/Kconfig
+@@ -22,6 +22,14 @@ config KSU_DEBUG
+ 	help
+ 	  Enable KernelSU debug mode.
+ 
++config KSU_SELINUX_HIDE_4_19
++	bool "Experimental SELinux modification hiding for Linux 4.19"
++	depends on KSU
++	default n
++	help
++	  Backport SukiSU's SELinux modification hiding feature to the
++	  legacy Linux 4.19 SELinux state layout. This is experimental.
++
+ config KPM
+     bool "Enable SukiSU KPM"
+     depends on KSU && 64BIT
 diff --git a/kernel/feature/selinux_hide.c b/kernel/feature/selinux_hide.c
+index 11c77bc..bdd69b8 100644
 --- a/kernel/feature/selinux_hide.c
 +++ b/kernel/feature/selinux_hide.c
 @@ -12,6 +12,9 @@
@@ -10,8 +30,8 @@ diff --git a/kernel/feature/selinux_hide.c b/kernel/feature/selinux_hide.c
 +#endif
  
  #if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0)
- int security_context_to_sid_with_policy(struct selinux_policy *policy, const char *scontext, u32 scontext_len,
-@@ -40,17 +43,25 @@
+ #else
+@@ -22,17 +25,25 @@ DEFINE_STATIC_KEY_FALSE(fake_status_initialize_key);
  #endif
  struct page *fake_status = NULL;
  
@@ -40,7 +60,7 @@ diff --git a/kernel/feature/selinux_hide.c b/kernel/feature/selinux_hide.c
      if (!status->enforcing) {
          pr_warn("initialize_fake_status: skip not enforcing\n");
          goto out;
-@@ -70,7 +81,7 @@
+@@ -52,7 +63,7 @@ void initialize_fake_status()
              new_status->policyload, new_status->enforcing);
  
  out:
@@ -49,7 +69,7 @@ diff --git a/kernel/feature/selinux_hide.c b/kernel/feature/selinux_hide.c
  }
  
  void ksu_selinux_hide_handle_second_stage()
-@@ -93,15 +104,33 @@
+@@ -75,15 +86,33 @@ void ksu_selinux_hide_handle_post_fs_data()
  static int ksu_selinux_hide_enable()
  {
      pr_info("selinux_hide: init selinux hide\n");
@@ -84,7 +104,7 @@ diff --git a/kernel/feature/selinux_hide.c b/kernel/feature/selinux_hide.c
  #endif
  
      return 0;
-@@ -119,18 +148,34 @@
+@@ -101,18 +130,34 @@ static int selinux_hide_feature_set(u64 value)
      int ret = 0;
      pr_info("selinux_hide: set to %d\n", enable);
      mutex_lock(&selinux_hide_mutex);
@@ -122,7 +142,7 @@ diff --git a/kernel/feature/selinux_hide.c b/kernel/feature/selinux_hide.c
      }
      pr_info("selinux_hide: ksu_selinux_hide_enabled: %d, ksu_selinux_hide_running: %d\n",
              ksu_selinux_hide_enabled, ksu_selinux_hide_running);
-@@ -161,22 +206,34 @@
+@@ -143,22 +188,34 @@ void __exit ksu_selinux_hide_exit(void)
      }
      mutex_unlock(&selinux_hide_mutex);
      ksu_unregister_feature_handler(KSU_FEATURE_SELINUX_HIDE);
@@ -164,12 +184,13 @@ diff --git a/kernel/feature/selinux_hide.c b/kernel/feature/selinux_hide.c
      mutex_unlock(&selinux_hide_mutex);
  }
 diff --git a/kernel/feature/selinux_hide.h b/kernel/feature/selinux_hide.h
+index 5a04371..a1dc5f5 100644
 --- a/kernel/feature/selinux_hide.h
 +++ b/kernel/feature/selinux_hide.h
 @@ -1,10 +1,25 @@
  #ifndef __KSU_H_SELINUX_HIDE
  #define __KSU_H_SELINUX_HIDE
-+
+ 
 +#include <linux/types.h>
 +#include <linux/jump_label.h>
 +
@@ -183,7 +204,7 @@ diff --git a/kernel/feature/selinux_hide.h b/kernel/feature/selinux_hide.h
 +#ifdef KSU_COMPAT_USE_STATIC_KEY
 +extern struct static_key_false fake_status_initialize_key;
 +#endif
- 
++
  void ksu_selinux_hide_init();
  void ksu_selinux_hide_exit();
  void ksu_selinux_hide_drop_backup_if_unused();
@@ -193,9 +214,10 @@ diff --git a/kernel/feature/selinux_hide.h b/kernel/feature/selinux_hide.h
  
  #endif
 diff --git a/kernel/include/uapi/feature.h b/kernel/include/uapi/feature.h
+index 4e9d562..78bcd4d 100644
 --- a/kernel/include/uapi/feature.h
 +++ b/kernel/include/uapi/feature.h
-@@ -6,7 +6,7 @@
+@@ -6,7 +6,7 @@ enum ksu_feature_id {
      KSU_FEATURE_KERNEL_UMOUNT = 1,
      KSU_FEATURE_SULOG = 2,
      KSU_FEATURE_ADB_ROOT = 3,
@@ -204,37 +226,20 @@ diff --git a/kernel/include/uapi/feature.h b/kernel/include/uapi/feature.h
      KSU_FEATURE_SELINUX_HIDE = 4,
  #endif
      KSU_FEATURE_SHELL_SU_ADB_ONLY = 6,
-diff --git a/kernel/Kconfig b/kernel/Kconfig
---- a/kernel/Kconfig
-+++ b/kernel/Kconfig
-@@ -21,6 +21,14 @@
- 	default n
- 	help
- 	  Enable KernelSU debug mode.
-+
-+config KSU_SELINUX_HIDE_4_19
-+	bool "Experimental SELinux modification hiding for Linux 4.19"
-+	depends on KSU
-+	default n
-+	help
-+	  Backport SukiSU's SELinux modification hiding feature to the
-+	  legacy Linux 4.19 SELinux state layout. This is experimental.
- 
- config KPM
-     bool "Enable SukiSU KPM"
 diff --git a/kernel/ksu.c b/kernel/ksu.c
+index ca84348..abd26fb 100644
 --- a/kernel/ksu.c
 +++ b/kernel/ksu.c
-@@ -32,7 +32,7 @@
- #include "feature/kernel_umount.h"
+@@ -34,7 +34,7 @@
  #include "feature/sucompat.h"
  #include "feature/sulog.h"
+ #include "feature/mount_hide.h"
 -#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
 +#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0) || defined(CONFIG_KSU_SELINUX_HIDE_4_19)
  #include "feature/selinux_hide.h"
  #endif
  #include "feature/shell_su_adb_only.h"
-@@ -85,7 +85,7 @@
+@@ -97,7 +97,7 @@
  #include "feature/kernel_umount.c"
  #include "feature/sucompat.c"
  #include "feature/sulog.c"
@@ -243,7 +248,7 @@ diff --git a/kernel/ksu.c b/kernel/ksu.c
  #include "feature/selinux_hide.c"
  #endif
  #include "feature/shell_su_adb_only.c"
-@@ -150,7 +150,7 @@
+@@ -170,7 +170,7 @@ int __init kernelsu_init(void)
  
      ksu_shell_su_adb_only_init();
  
@@ -253,9 +258,10 @@ diff --git a/kernel/ksu.c b/kernel/ksu.c
  #endif
  
 diff --git a/kernel/runtime/ksud.c b/kernel/runtime/ksud.c
+index 309cb40..1b5eafe 100644
 --- a/kernel/runtime/ksud.c
 +++ b/kernel/runtime/ksud.c
-@@ -55,7 +55,7 @@
+@@ -55,7 +55,7 @@ void on_post_fs_data(void)
      ksu_observer_init();
      // sanity check, this may influence the performance
      stop_input_hook();
@@ -264,7 +270,7 @@ diff --git a/kernel/runtime/ksud.c b/kernel/runtime/ksud.c
      ksu_selinux_hide_handle_post_fs_data();
  #endif
      // retry forced features which failed at second stage
-@@ -96,7 +96,7 @@
+@@ -97,7 +97,7 @@ void on_boot_completed(void)
      ksu_boot_completed = true;
      pr_info("on_boot_completed!\n");
      track_throne(true);
@@ -273,7 +279,7 @@ diff --git a/kernel/runtime/ksud.c b/kernel/runtime/ksud.c
      ksu_selinux_hide_drop_backup_if_unused();
  #endif
  }
-@@ -221,7 +221,7 @@
+@@ -222,7 +222,7 @@ int ksu_handle_execveat_ksud(int *fd, struct filename **filename_ptr,
              char buf[16];
              if (check_argv(*argv, 1, "second_stage", buf, sizeof(buf))) {
                  pr_info("/system/bin/init second_stage executed\n");
@@ -282,7 +288,7 @@ diff --git a/kernel/runtime/ksud.c b/kernel/runtime/ksud.c
                  ksu_selinux_hide_handle_second_stage();
  #endif
                  apply_kernelsu_rules();
-@@ -295,7 +295,7 @@
+@@ -299,7 +299,7 @@ int ksu_handle_execveat_ksud(int *fd, struct filename **filename_ptr, struct use
          char buf[16];
          if (!init_second_stage_executed && check_argv(*argv, 1, "second_stage", buf, sizeof(buf))) {
              pr_info("/system/bin/init second_stage executed\n");
@@ -292,6 +298,7 @@ diff --git a/kernel/runtime/ksud.c b/kernel/runtime/ksud.c
  #endif
              apply_kernelsu_rules();
 diff --git a/kernel/selinux/rules.c b/kernel/selinux/rules.c
+index 9084986..1b7e791 100644
 --- a/kernel/selinux/rules.c
 +++ b/kernel/selinux/rules.c
 @@ -1,6 +1,8 @@
@@ -303,7 +310,7 @@ diff --git a/kernel/selinux/rules.c b/kernel/selinux/rules.c
  #endif
  
  #define ALL NULL
-@@ -208,11 +210,21 @@
+@@ -208,12 +210,22 @@ out_unlock:
  #else
  
      cpumask_t old_mask;
@@ -313,7 +320,7 @@ diff --git a/kernel/selinux/rules.c b/kernel/selinux/rules.c
      rwlock_t *lock = ksu_get_policy_rwlock();
      if (!lock)
          goto do_stop_machine;
-+
+ 
 +    if (!backup_selinux_ss) {
 +        snapshot = ksu_dup_selinux_ss(selinux_state.ss);
 +        if (IS_ERR(snapshot)) {
@@ -322,10 +329,11 @@ diff --git a/kernel/selinux/rules.c b/kernel/selinux/rules.c
 +            snapshot = NULL;
 +        }
 +    }
- 
++
      /*
  	 * HACK: write_lock() is held with preempt enabled. DO NOT let the
-@@ -227,6 +239,16 @@
+ 	 * task be migrated to any other CPU than the current CPU. And since
+@@ -227,6 +239,16 @@ out_unlock:
      write_lock(lock);
      preempt_enable();
  
@@ -342,7 +350,7 @@ diff --git a/kernel/selinux/rules.c b/kernel/selinux/rules.c
      // we do this dance since both kernel and userspace can trigger this
      if (likely(current && current->mm))
          goto has_current_mm;
-@@ -248,6 +270,8 @@
+@@ -248,6 +270,8 @@ out_unlock:
      preempt_disable();
      write_unlock(lock);
      set_cpus_allowed_ptr(current, &old_mask);
@@ -352,9 +360,10 @@ diff --git a/kernel/selinux/rules.c b/kernel/selinux/rules.c
  
  do_stop_machine:
 diff --git a/kernel/selinux/sepolicy.c b/kernel/selinux/sepolicy.c
+index d8aa28e..a45d484 100644
 --- a/kernel/selinux/sepolicy.c
 +++ b/kernel/selinux/sepolicy.c
-@@ -1110,13 +1110,14 @@
+@@ -1110,13 +1110,14 @@ bool ksu_genfscon(struct policydb *db, const char *fs_name, const char *path, co
      return add_genfscon(db, fs_name, path, ctx);
  }
  
@@ -370,7 +379,7 @@ diff --git a/kernel/selinux/sepolicy.c b/kernel/selinux/sepolicy.c
  
  // ======== sepolicy ========
  
-@@ -1205,4 +1206,96 @@
+@@ -1205,4 +1206,96 @@ out_free_data:
  
      return ERR_PTR(ret);
  }
@@ -468,6 +477,7 @@ diff --git a/kernel/selinux/sepolicy.c b/kernel/selinux/sepolicy.c
 +}
  #endif
 diff --git a/kernel/selinux/sepolicy.h b/kernel/selinux/sepolicy.h
+index 870fd67..bd14941 100644
 --- a/kernel/selinux/sepolicy.h
 +++ b/kernel/selinux/sepolicy.h
 @@ -7,6 +7,10 @@
