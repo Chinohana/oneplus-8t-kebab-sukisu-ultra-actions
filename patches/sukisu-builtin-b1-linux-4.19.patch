@@ -1,59 +1,35 @@
-diff --git a/kernel/include/uapi/supercall.h b/kernel/include/uapi/supercall.h
---- a/kernel/include/uapi/supercall.h
-+++ b/kernel/include/uapi/supercall.h
-@@ -14,7 +14,8 @@
- #endif
+diff --git a/kernel/feature/mount_hide.c b/kernel/feature/mount_hide.c
+index fb795ae..804dd9f 100644
+--- a/kernel/feature/mount_hide.c
++++ b/kernel/feature/mount_hide.c
+@@ -7,6 +7,7 @@
+ #include <linux/init.h>
+ #include <linux/kernel.h>
+ #include <linux/mount.h>
++#include <linux/magic.h>
+ #include <linux/mutex.h>
+ #include <linux/printk.h>
+ #include <linux/string.h>
+@@ -71,6 +72,9 @@ static bool ksu_path_is_proc_mount_file(struct file *file)
+     if (!file || !file->f_path.dentry)
+         return false;
  
- // 2: allowlist v4 root profile flag
--DECLARE(__u32, KERNEL_SU_UAPI_VERSION, 2);
-+// 3: scoped su-session fd; 4: optional bundled-LKM flag; 5: services result
-+DECLARE(__u32, KERNEL_SU_UAPI_VERSION, 5);
- 
- /* Magic numbers for reboot hook to install fd */
- DECLARE(__u32, KSU_INSTALL_MAGIC1, 0xDEADBEEF);
-@@ -34,6 +35,7 @@
- DECLARE(__u32, KSU_GET_INFO_FLAG_MANAGER, (1U << 1));
- DECLARE(__u32, KSU_GET_INFO_FLAG_LATE_LOAD, (1U << 2));
- DECLARE(__u32, KSU_GET_INFO_FLAG_PR_BUILD, (1U << 3));
-+DECLARE(__u32, KSU_GET_INFO_FLAG_BUNDLED, (1U << 4));
- 
- struct ksu_get_info_cmd {
-     __u32 version; /* Output: KERNEL_SU_VERSION */
-@@ -229,5 +231,6 @@
- DECLARE(__u32, KSU_IOCTL_ENABLE_KPM, _IOC(_IOC_READ, 'K', 102, 0));
- DECLARE(__u32, KSU_IOCTL_LIST_TRY_UMOUNT, _IOC(_IOC_READ | _IOC_WRITE, 'K', 103, 0));
- DECLARE(__u32, KSU_IOCTL_KPM, _IOC(_IOC_READ | _IOC_WRITE, 'K', 200, 0));
-+DECLARE(__u32, KSU_IOCTL_MANAGER, _IOWR('K', 106, struct ksu_manager_cmd));
- 
- #endif
-diff --git a/kernel/manager/pkg_observer.c b/kernel/manager/pkg_observer.c
---- a/kernel/manager/pkg_observer.c
-+++ b/kernel/manager/pkg_observer.c
-@@ -19,7 +19,7 @@
-     // Runs after exit_fs() if the task is exiting; path lookups would oops
-     if (current->flags & PF_EXITING)
-         return;
--    track_throne(TRACK_THRONE_FORCE_SYNCHRONOUS);
-+    track_throne(false); /* builtin: false performs a full synchronous scan */
- }
- 
- // Never scan from the fsnotify handler: fsnotify_mark_srcu and the rename's dir
-@@ -41,7 +41,7 @@
-         }
-     }
-     pr_warn("defer track_throne failed, run it inline\n");
--    track_throne(TRACK_THRONE_FORCE_SYNCHRONOUS);
-+    track_throne(false); /* builtin: false performs a full synchronous scan */
- }
- static KSU_DECL_FSNOTIFY_OPS(ksu_handle_generic_event)
- {
++    if (file_inode(file)->i_sb->s_magic != PROC_SUPER_MAGIC)
++        return false;
++
+     name = file->f_path.dentry->d_name.name;
+     if (!name)
+         return false;
 diff --git a/kernel/manager/throne_tracker.c b/kernel/manager/throne_tracker.c
+index cea4da6..85ec08f 100644
 --- a/kernel/manager/throne_tracker.c
 +++ b/kernel/manager/throne_tracker.c
-@@ -40,13 +40,14 @@
+@@ -40,15 +40,14 @@ static int crown_manager(const char *apk, const char *apk_dir, struct list_head
      struct uid_data *np;
      bool builtin_present_this_call = false;
      bool builtin_crowned_this_call = false;
+-    char pkg[KSU_MAX_PACKAGE_NAME];
+-    const char *builtin_pkg = KSU_PACKAGE_NAME;
 +    char pkg[KSU_MAX_PACKAGE_NAME] = {};
 +
 +    if (get_pkg_from_apk_dir_path(pkg, apk_dir) < 0) {
@@ -62,15 +38,15 @@ diff --git a/kernel/manager/throne_tracker.c b/kernel/manager/throne_tracker.c
 +    }
  
      if (sig_fallback) {
--        char pkg[KSU_MAX_PACKAGE_NAME];
 -        if (get_pkg_from_apk_dir_path(pkg, apk_dir) < 0) {
 -            pr_err("Failed to get package name from apk dir path: %s\n", apk_dir);
 -            return 0;
 -        }
+-        builtin_pkg = pkg;
  
          pr_info("manager pkg: %s\n", pkg);
  
-@@ -59,7 +60,7 @@
+@@ -61,7 +60,7 @@ static int crown_manager(const char *apk, const char *apk_dir, struct list_head
                  break;
              }
          }
@@ -79,19 +55,20 @@ diff --git a/kernel/manager/throne_tracker.c b/kernel/manager/throne_tracker.c
          list_for_each_entry (np, list, list) {
              if (strncmp(np->package, KSU_PACKAGE_NAME, KSU_MAX_PACKAGE_NAME) == 0) {
                  builtin_present_this_call = true;
-@@ -94,7 +95,7 @@
+@@ -96,7 +95,7 @@ static int crown_manager(const char *apk, const char *apk_dir, struct list_head
          return 0;
  
      list_for_each_entry (np, list, list) {
--        if (strncmp(np->package, pkg, KSU_MAX_PACKAGE_NAME) == 0)
+-        if (strncmp(np->package, builtin_pkg, KSU_MAX_PACKAGE_NAME) == 0)
 +        if (strncmp(np->package, pkg, KSU_MAX_PACKAGE_NAME) != 0)
              continue;
          /*
           * For dynamic managers the (package, uid) pair must match a
 diff --git a/kernel/policy/feature.c b/kernel/policy/feature.c
+index 05ae163..1d6e447 100644
 --- a/kernel/policy/feature.c
 +++ b/kernel/policy/feature.c
-@@ -7,7 +7,9 @@
+@@ -7,7 +7,9 @@ static const char *const feature_names[KSU_FEATURE_MAX] = {
      [KSU_FEATURE_KERNEL_UMOUNT] = "kernel_umount",
      [KSU_FEATURE_SULOG] = "sulog",
      [KSU_FEATURE_ADB_ROOT] = "adb_root",
@@ -99,12 +76,13 @@ diff --git a/kernel/policy/feature.c b/kernel/policy/feature.c
      [KSU_FEATURE_SELINUX_HIDE] = "selinux_hide",
 +#endif
      [KSU_FEATURE_SHELL_SU_ADB_ONLY] = "shell_su_adb_only",
+     [KSU_FEATURE_MOUNT_HIDE] = "mount_hide",
  };
- 
 diff --git a/kernel/runtime/ksud.c b/kernel/runtime/ksud.c
+index 6e1b528..309cb40 100644
 --- a/kernel/runtime/ksud.c
 +++ b/kernel/runtime/ksud.c
-@@ -55,7 +55,9 @@
+@@ -55,7 +55,9 @@ void on_post_fs_data(void)
      ksu_observer_init();
      // sanity check, this may influence the performance
      stop_input_hook();
@@ -113,8 +91,8 @@ diff --git a/kernel/runtime/ksud.c b/kernel/runtime/ksud.c
 +#endif
      // retry forced features which failed at second stage
      ksu_feature_apply_forced();
- }
-@@ -219,7 +221,9 @@
+     ksu_extension_apply_forced();
+@@ -220,7 +222,9 @@ int ksu_handle_execveat_ksud(int *fd, struct filename **filename_ptr,
              char buf[16];
              if (check_argv(*argv, 1, "second_stage", buf, sizeof(buf))) {
                  pr_info("/system/bin/init second_stage executed\n");
@@ -124,7 +102,7 @@ diff --git a/kernel/runtime/ksud.c b/kernel/runtime/ksud.c
                  apply_kernelsu_rules();
                  cache_sid();
                  setup_ksu_cred();
-@@ -291,7 +295,9 @@
+@@ -295,7 +299,9 @@ int ksu_handle_execveat_ksud(int *fd, struct filename **filename_ptr, struct use
          char buf[16];
          if (!init_second_stage_executed && check_argv(*argv, 1, "second_stage", buf, sizeof(buf))) {
              pr_info("/system/bin/init second_stage executed\n");
@@ -135,9 +113,10 @@ diff --git a/kernel/runtime/ksud.c b/kernel/runtime/ksud.c
              cache_sid();
              setup_ksu_cred();
 diff --git a/kernel/selinux/rules.c b/kernel/selinux/rules.c
+index 3d5b86e..9084986 100644
 --- a/kernel/selinux/rules.c
 +++ b/kernel/selinux/rules.c
-@@ -151,7 +151,9 @@
+@@ -151,7 +151,9 @@ static int apply_kernelsu_rules_fn(void *ptr)
  
  void apply_kernelsu_rules(void)
  {
@@ -147,7 +126,7 @@ diff --git a/kernel/selinux/rules.c b/kernel/selinux/rules.c
      struct policydb *db;
  
      if (!getenforce()) {
-@@ -255,6 +257,9 @@
+@@ -255,6 +257,9 @@ do_stop_machine:
  out_flush:
      smp_mb();
      reset_avc_cache();
@@ -158,9 +137,10 @@ diff --git a/kernel/selinux/rules.c b/kernel/selinux/rules.c
  }
  
 diff --git a/kernel/sulog/event.c b/kernel/sulog/event.c
+index e45f01f..7768000 100644
 --- a/kernel/sulog/event.c
 +++ b/kernel/sulog/event.c
-@@ -374,9 +374,14 @@
+@@ -374,9 +374,14 @@ static struct ksu_sulog_pending_event *ksu_sulog_capture_grant_root(const struct
      struct ksu_sulog_event *event;
  
      // This is actually stupid fix
