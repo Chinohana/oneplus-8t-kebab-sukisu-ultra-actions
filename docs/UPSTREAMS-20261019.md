@@ -20,11 +20,15 @@ Manager 扫描仍需本地修正：先解析当前 APK 包名，内置分支仅�
 
 两份 SukiSU 补丁重基到新源码。Linux 4.19 的 SELinux 状态备份、假状态页生命周期及重启后启用逻辑保留；新 extension 初始化和强制配置调用也保留。
 
+云端首次编译发现两处新增扩展的旧内核适配缺口：CPU spoof 使用的 `clocksource.vdso_clock_mode` 在本内核中对应 `archdata.vdso_direct`；KPM 的三份底层实现未受配置保护，即使关闭 KPM 也会编译。兼容补丁分别适配旧字段，并让底层 KPM 代码仅在 `CONFIG_KPM` 开启时编译，extension 的“不支持”查询路径继续保留。
+
 上游新增 `mount_hide` 默认启用，通过文件打开钩子拒绝目标应用读取挂载信息。其文件分类器原先仅检查文件名，本次增加 `PROC_SUPER_MAGIC` 检查，避免拦截 ext4、tmpfs 等文件系统中的同名文件。新增宿主测试直接编译实际分类器，覆盖 procfs 的三个目标名、普通文件系统同名文件、非目标名和空输入。此功能的应用兼容性仍需真机检查。
 
 ## SUSFS 集成补丁
 
 稳定分支新增四个提交：重基到 Android 14 的 6.1.176、继续修复 SELinux hide、同步 KernelSU，以及复用上游 SELinux 查询函数。官方比较结果只修改两份集成补丁，`fs/susfs.c`、两份头文件和 userspace 工具源码未变。
+
+拉取固定 SUSFS 提交增加最多三次重试，处理本次遇到的 GitLab 临时负载错误；最终仍严格校验取回的提交。
 
 本项目的 4.19 补丁已在 context/access 查询中选择备份状态，status-open 也优先使用已有假页，因此保留这些独立的旧内核实现。GKI 集成补丁中的 preinit 和现代 SELinux 接口不直接套用到 4.19。
 
