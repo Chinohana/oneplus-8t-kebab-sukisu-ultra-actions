@@ -155,3 +155,34 @@ index e45f01f..7768000 100644
      if (!pending)
          return NULL;
  
+diff --git a/kernel/ksu.c b/kernel/ksu.c
+--- a/kernel/ksu.c
++++ b/kernel/ksu.c
+@@ -71,9 +71,11 @@
+ #include "extension/umount_paths.c"
+ #include "extension/dynamic_manager.c"
+ #include "extension/kpm.c"
++#ifdef CONFIG_KPM
+ #include "extension/kpm/kpm.c"
+ #include "extension/kpm/compact.c"
+ #include "extension/kpm/super_access.c"
++#endif
+ #include "extension/susfs_extension.c"
+ 
+ #include "policy/allowlist.c"
+diff --git a/kernel/extension/cpu_spoof.c b/kernel/extension/cpu_spoof.c
+--- a/kernel/extension/cpu_spoof.c
++++ b/kernel/extension/cpu_spoof.c
+@@ -170,8 +170,12 @@
+                         (struct clocksource **)find_kernel_symbol_exact(
+                             "curr_clocksource");
+                     if (curr_cs_ptr && *curr_cs_ptr) {
++#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 0, 0)
++                        (*curr_cs_ptr)->archdata.vdso_direct = true;
++#else
+                         (*curr_cs_ptr)->vdso_clock_mode =
+                             VDSO_CLOCKMODE_ARCHTIMER;
++#endif
+                     } else {
+                         pr_warn("ksu: set_spoof_cpu failed to resolve 'curr_clocksource'\n");
+                         ++missing;

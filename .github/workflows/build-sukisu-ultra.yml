@@ -310,8 +310,17 @@ jobs:
 
           git init susfs_reference
           git -C susfs_reference remote add origin "$SUSFS_REPOSITORY"
-          git -C susfs_reference fetch --no-tags --depth=1 \
-            origin "$SUSFS_COMMIT"
+          for attempt in 1 2 3; do
+            if git -C susfs_reference fetch --no-tags --depth=1 \
+                origin "$SUSFS_COMMIT"; then
+              break
+            fi
+            if test "$attempt" = 3; then
+              echo "::error::Unable to fetch pinned SUSFS after three attempts."
+              exit 1
+            fi
+            sleep "$((attempt * 10))"
+          done
           git -C susfs_reference checkout --detach "$SUSFS_COMMIT"
           test "$(git -C susfs_reference rev-parse HEAD)" = "$SUSFS_COMMIT"
           grep -Fqx '#define SUSFS_VERSION "v2.3.0"' \
@@ -423,7 +432,9 @@ jobs:
             "$RUNNER_TEMP/baseline-hook-files.from-patch"
 
           cat > "$RUNNER_TEMP/sukisu-compat-files.expected" <<'EOF'
+          kernel/extension/cpu_spoof.c
           kernel/feature/mount_hide.c
+          kernel/ksu.c
           kernel/manager/throne_tracker.c
           kernel/policy/feature.c
           kernel/runtime/ksud.c
