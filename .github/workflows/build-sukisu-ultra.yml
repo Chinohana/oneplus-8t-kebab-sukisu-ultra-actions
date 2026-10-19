@@ -423,8 +423,7 @@ jobs:
             "$RUNNER_TEMP/baseline-hook-files.from-patch"
 
           cat > "$RUNNER_TEMP/sukisu-compat-files.expected" <<'EOF'
-          kernel/include/uapi/supercall.h
-          kernel/manager/pkg_observer.c
+          kernel/feature/mount_hide.c
           kernel/manager/throne_tracker.c
           kernel/policy/feature.c
           kernel/runtime/ksud.c
@@ -808,12 +807,18 @@ jobs:
           }
 
           for tree in kernel_baseline kernel_experiment; do
+            python3 "$GITHUB_WORKSPACE/scripts/test-mount-hide.py" \
+              "$tree/KernelSU/kernel/feature/mount_hide.c"
             python3 "$GITHUB_WORKSPACE/scripts/test-manager-crown.py" \
               "$tree/KernelSU/kernel/manager/throne_tracker.c"
-            grep -Fq 'DECLARE(__u32, KERNEL_SU_UAPI_VERSION, 5);' \
+            grep -Fq 'DECLARE(__u32, KERNEL_SU_UAPI_VERSION, 6);' \
               "$tree/KernelSU/kernel/include/uapi/supercall.h"
-            grep -Fq "DECLARE(__u32, KSU_IOCTL_MANAGER, _IOWR('K', 106, struct ksu_manager_cmd));" \
-              "$tree/KernelSU/kernel/include/uapi/supercall.h"
+            grep -Fq "DECLARE(__u32, KSU_IOCTL_EXTENSION," \
+              "$tree/KernelSU/kernel/include/uapi/extension.h"
+            grep -Fq ".handler = do_extension," \
+              "$tree/KernelSU/kernel/supercall/dispatch.c"
+            grep -Fq "ksu_extension_dynamic_manager_io" \
+              "$tree/KernelSU/kernel/extension/dynamic_manager.c"
             grep -Fq 'DECLARE(__u32, EVENT_SERVICES, 4);' \
               "$tree/KernelSU/kernel/include/uapi/supercall.h"
             require_one_call "$tree/fs/exec.c" \
