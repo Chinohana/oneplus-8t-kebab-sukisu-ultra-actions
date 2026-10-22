@@ -67,12 +67,14 @@ def compute_fingerprint(root: Path) -> tuple[str, str]:
     rom, _ = target_platform(pins)
     commit = kernel_commit(root, pins["KERNEL_PIN_PATH"])
     pathspecs = [
+        ".gitattributes",
         ".gitmodules",
         "config/build-pins.env",
         "config/migration-baseline-lineage-23.2.sha256",
         ".github/scripts/*.sh",
         ".github/workflows/build-sukisu-ultra.yml",
         "patches/*.patch",
+        "scripts/build/*",
     ]
     tracked = git(root, "ls-files", "-z", "--", *pathspecs).split(b"\0")
     paths = sorted(item.decode() for item in tracked if item)

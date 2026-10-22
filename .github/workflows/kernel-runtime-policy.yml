@@ -31,8 +31,8 @@ jobs:
           requires_phone_test=false
           while IFS= read -r file; do
             case "$file" in
-              .gitmodules|config/*|pins/kernel-lineage-*|\
-              .github/workflows/build-sukisu-ultra.yml|.github/scripts/*|patches/*.patch)
+              .gitattributes|.gitmodules|config/*|pins/kernel-lineage-*|\
+              .github/workflows/build-sukisu-ultra.yml|.github/scripts/*|patches/*.patch|scripts/build/*)
                 requires_phone_test=true
                 ;;
             esac

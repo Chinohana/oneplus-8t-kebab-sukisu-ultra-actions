@@ -39,8 +39,8 @@ changed_files="$(git -C "$root" diff --name-only "$base_ref"...HEAD)"
 needs_build=false
 while IFS= read -r file; do
   case "$file" in
-    .gitmodules|config/*|pins/kernel-lineage-*|\
-    .github/workflows/build-sukisu-ultra.yml|.github/scripts/*|patches/*.patch)
+    .gitattributes|.gitmodules|config/*|pins/kernel-lineage-*|\
+    .github/workflows/build-sukisu-ultra.yml|.github/scripts/*|patches/*.patch|scripts/build/*)
       needs_build=true
       ;;
   esac

@@ -31,6 +31,8 @@ SUSFS 自 v2.2 起移除了 Try Umount、自动添加挂载、Magic Mount 和 Ov
 
 ## 构建
 
+本地与 Actions 共用构建阶段。日常试编译使用 E 盘 `OnePlus8T-Build` 中的专用 WSL；首次使用先看[本地构建说明](docs/LOCAL-BUILD.md)，运行只读预检，再启动编译。正式采纳仍需云端矩阵复核和真机审批。以下为云端入口。
+
 进入 [Actions](https://github.com/Chinohana/oneplus-8t-kebab-sukisu-ultra-actions/actions)，选择 **Build kebab SukiSU Ultra**，点击 **Run workflow**。默认构建完整 SUSFS、SELinux hide 和 AnyKernel3 ZIP，并开启 ccache。
 
 | 选项 | 用途 |
