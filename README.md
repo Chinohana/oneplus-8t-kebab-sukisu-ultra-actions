@@ -25,6 +25,8 @@
 
 打开 [Releases](https://github.com/Chinohana/oneplus-8t-kebab-sukisu-ultra-actions/releases/latest)，在版本页的 **Assets** 中下载。正式包从本地构建后上传到这里，Actions 不再生成新内核包；其中的旧 artifact 只作历史资料，不作为当前版本下载入口。
 
+本次版本可直接下载：[内核安装 ZIP](https://github.com/Chinohana/oneplus-8t-kebab-sukisu-ultra-actions/releases/download/v2026.10.22-ksu41028/SukiSU-kebab-LOS24.0-KSU41028-20261022-AnyKernel3.zip) · [SHA-256 清单](https://github.com/Chinohana/oneplus-8t-kebab-sukisu-ultra-actions/releases/download/v2026.10.22-ksu41028/SHA256SUMS) · [完整交付归档](https://github.com/Chinohana/oneplus-8t-kebab-sukisu-ultra-actions/releases/download/v2026.10.22-ksu41028/SukiSU-kebab-LOS24.0-KSU41028-20261022-full-artifacts.zip)。
+
 | 文件 | 用途 |
 | --- | --- |
 | `…-AnyKernel3.zip` | 内核安装包，普通安装下载这个 |
