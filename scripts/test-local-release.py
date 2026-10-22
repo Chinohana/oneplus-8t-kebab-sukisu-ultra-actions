@@ -7,6 +7,7 @@ import hashlib
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 from types import SimpleNamespace
 import unittest
@@ -22,7 +23,7 @@ spec.loader.exec_module(release)
 class PhoneEvidence(unittest.TestCase):
     def setUp(self):
         self.build = {'builder_commit': 'a'*40, 'package_sha256': 'b'*64,
-                      'image_sha256': 'c'*64, 'local_run_id': 'local-test'}
+                      'image_sha256': 'c'*64, 'tool_sha256': 'd'*64, 'local_run_id': 'local-test'}
         self.phone = {**self.build, 'tester': 'test operator',
                       'tested_at': datetime.now(timezone.utc).isoformat(),
                       'checks': dict.fromkeys(release.CHECKS, True)}
@@ -36,7 +37,7 @@ class PhoneEvidence(unittest.TestCase):
             release.check_phone(self.phone, self.build)
 
     def test_package_or_snapshot_change_invalidates_phone_test(self):
-        for key in ('package_sha256', 'builder_commit', 'image_sha256', 'local_run_id'):
+        for key in ('package_sha256', 'builder_commit', 'image_sha256', 'tool_sha256', 'local_run_id'):
             with self.subTest(key=key), self.assertRaisesRegex(ValueError, key):
                 release.check_phone({**self.phone, key: 'changed'}, self.build)
 
@@ -139,7 +140,19 @@ class PhoneEvidence(unittest.TestCase):
         matrix.write_text(json.dumps({'result': 'passed', 'execution_environment': 'local-wsl2',
                                       'builder_commit': head, 'variants': deliveries}))
         args = SimpleNamespace(artifacts=full, candidate=candidate, matrix=matrix, phone_test=phone)
-        self.assertTrue(release.accept(args)['phone_tested'])
+        accepted = release.accept(args)
+        self.assertTrue(accepted['phone_tested'])
+        acceptance = candidate.parent / 'acceptance.json'
+        release.write_new(acceptance, accepted)
+        output = candidate.parent / 'release-output'
+        command = ['local.py', 'stage', '--candidate', str(candidate), '--artifacts', str(full),
+                   '--matrix', str(matrix), '--phone-test', str(phone), '--acceptance', str(acceptance), '--output', str(output)]
+        with patch.object(sys, 'argv', command):
+            release.main()
+        for line in (output / 'SHA256SUMS').read_text().splitlines():
+            digest, name = line.split(None, 1)
+            self.assertEqual(release.sha(output / name), digest)
+        self.assertNotIn(str(candidate.parent), (output / 'matrix-summary.json').read_text())
         (full / 'kernel/candidate.zip').write_bytes(b'tampered')
         with self.assertRaisesRegex(ValueError, 'Package hash'):
             release.accept(args)
