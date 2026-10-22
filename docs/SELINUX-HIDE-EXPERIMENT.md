@@ -1,5 +1,7 @@
 # Linux 4.19 的 SELinux hide 移植
 
+本文是历史移植和验证记录。当前编译、验收和发布全部在本地执行，操作入口见[本地构建说明](LOCAL-BUILD.md)；下文保留的云端步骤只用于追溯。
+
 本项目通过 `CONFIG_KSU_SELINUX_HIDE_4_19` 接入 SukiSU 的“隐藏 SELinux 修改”。该功能已合入 `main`，默认编译，运行时在管理器中手动开启；构建时可用 **Enable SELinux hide** 关闭。
 
 它让应用读取 KSU 规则注入前的 SELinux 策略快照，系统进程和 root 仍使用实时策略。实际 Enforcing 状态和 SUSFS 的 AVC 日志伪装不受这个开关影响。
