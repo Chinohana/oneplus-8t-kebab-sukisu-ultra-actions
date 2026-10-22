@@ -31,6 +31,8 @@ SUSFS 自 v2.2 起移除了 Try Umount、自动添加挂载、Magic Mount 和 Ov
 
 ## 构建、验收与发布
 
+当前手册与历史资料的区别见[文档入口](docs/README.md)。
+
 内核编译、配置矩阵、产物验收、真机测试确认和发布目录生成全部在本地完成。GitHub 保存代码和历史记录，PR 仅运行源码检查及控制脚本测试，不再编译内核或审批产物。
 
 在专用 WSL `OnePlus8T-Build` 的 `~/oneplus8t-kernel/control` 中运行：

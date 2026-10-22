@@ -1,5 +1,7 @@
 # 2026-10-17 上游更新与 Manager 兼容修复
 
+本文是历史移植和验证记录。当前编译、验收和发布全部在本地执行，操作入口见[本地构建说明](LOCAL-BUILD.md)；下文保留的云端步骤只用于追溯。
+
 这次更新将 SukiSU `builtin` 与 Manager 对齐到 41001，并更新 SUSFS v2.3。它延续 [PR #25](https://github.com/Chinohana/oneplus-8t-kebab-sukisu-ultra-actions/pull/25) 的依赖升级，之后成为 [LineageOS 24.0 迁移](LINEAGE-24-EXPERIMENT.md)的输入基线。
 
 ## 选定版本
