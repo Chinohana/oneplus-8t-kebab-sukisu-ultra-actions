@@ -95,7 +95,11 @@ python3 scripts/release/local.py stage --candidate <完整配置运行目录> --
 
 生成发布目录前会再次核验全部证据，并确认验收记录仍与当前文件一致。目录包含安装包、SUSFS 用户态工具、配置、System.map、来源记录、本地验收及真机记录、去除本地路径的矩阵摘要和 `SHA256SUMS`。通过 `.partial` 临时目录校验后才转为正式目录，已有目录不会被覆盖。
 
-该目录就是本地版本交付。将来如需上传到 GitHub Releases，可以从本地上传已验收文件；上传不再触发云端编译或复验。当前命令不会上传、创建 tag 或操作手机。
+该目录就是本地版本交付，GitHub Releases 用于向使用者提供下载。上传从本地执行，不触发云端编译或复验；当前 `stage` 命令只生成文件，不上传或创建 tag。
+
+发布时单独提供 `…-AnyKernel3.zip` 和 `SHA256SUMS`，另用 `…-full-artifacts.zip` 保存完整交付，避免使用者把归档或 GitHub 自动生成的源码 ZIP 当作安装包。tag 对应实际 builder commit，发布说明注明适用 ROM、各附件用途和实际完成的验证。
+
+维护者明确决定正式发布某次交付时，将这项决定另记在 release manifest 中，保留构建时的 provenance 和候选标签。发布决定不补写真机结果，也不生成工具验收流程尚未通过的 `acceptance.json`。本地完整验收工具仍按上述步骤核对矩阵和真机证据。
 
 原 Actions 编译、云端审批和构建结果通知入口已停用。PR 的 `kernel-candidate-gate` 与 `kernel-runtime-policy` 保留原检查名称，输出本地验收说明，不能作为任何产物的验收凭据。
 
