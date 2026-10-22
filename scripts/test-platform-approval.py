@@ -126,6 +126,22 @@ class PlatformApproval(unittest.TestCase):
         new, _ = verifier.compute_fingerprint(self.root)
         self.assertNotEqual(old, new)
 
+    def test_shared_stage_changes_fingerprint_and_requires_build(self):
+        self.platform("24.0")
+        original, _ = verifier.compute_fingerprint(self.root)
+        base = git(self.root, "rev-parse", "HEAD")
+        stage = self.root / "scripts/build/stages/compile.sh"
+        stage.write_text(stage.read_text() + "\n# regression fixture\n", newline="\n")
+        git(self.root, "add", "scripts/build/stages/compile.sh")
+        git(self.root, "commit", "-qm", "Change shared build stage")
+        self.assertNotEqual(original, verifier.compute_fingerprint(self.root)[0])
+        output = self.root / "inspection.txt"
+        run = subprocess.run([BASH, ".github/scripts/validate-kernel-candidate.sh", ".", base],
+                             cwd=self.root, env={**os.environ, "GITHUB_OUTPUT": str(output)},
+                             capture_output=True, text=True)
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertIn("needs_build=true", output.read_text())
+
     def test_shell_and_trusted_python_fingerprints_agree(self):
         # The bootstrap shell still targets 23.2; the migration shell uses pins.
         shell = (self.root / ".github/scripts/compute-build-fingerprint.sh").read_text()

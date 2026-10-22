@@ -17,3 +17,5 @@ jobs:
           persist-credentials: false
       - name: Test trusted platform approval and fingerprint parity
         run: python3 scripts/test-platform-approval.py
+      - name: Test local preflight, delivery integrity and comparison
+        run: python3 scripts/test-local-build.py
