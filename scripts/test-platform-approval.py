@@ -154,6 +154,20 @@ class PlatformApproval(unittest.TestCase):
                 self.assertEqual(run.returncode, 0, run.stderr)
                 self.assertEqual(run.stdout.strip(), verifier.compute_fingerprint(self.root)[0])
 
+    def test_local_matrix_fingerprint_parity(self):
+        self.platform("24.0")
+        variants = (("false", "smoke", "false"), ("false", "smoke", "true"),
+                    ("true", "extended-stat", "false"), ("true", "extended-full", "true"))
+        for susfs, profile, hide in variants:
+            with self.subTest(susfs=susfs, profile=profile, hide=hide):
+                env = {**os.environ, "ENABLE_SUSFS": susfs, "SUSFS_PROFILE": profile,
+                       "ENABLE_SELINUX_HIDE": hide, "USE_ANYKERNEL": "true", "BUILD_CHANNEL": "candidate"}
+                run = subprocess.run([BASH, ".github/scripts/compute-build-fingerprint.sh", ".", "audit"],
+                                     cwd=self.root, env=env, capture_output=True, text=True)
+                self.assertEqual(run.returncode, 0, run.stderr)
+                self.assertEqual(run.stdout.strip(), verifier.compute_fingerprint(
+                    self.root, enable_susfs=susfs, profile=profile, enable_hide=hide)[0])
+
     def check_transition(self, upstream_sha):
         script = self.root / ".github/scripts/validate-kernel-candidate.sh"
         if "platform_changed" not in script.read_text():

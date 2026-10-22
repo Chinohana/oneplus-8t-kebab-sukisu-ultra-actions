@@ -6,3 +6,5 @@
 /config/ @Chinohana
 /patches/ @Chinohana
 /pins/kernel-lineage-* @Chinohana
+/scripts/build/ @Chinohana
+/scripts/release/ @Chinohana
