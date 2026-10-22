@@ -56,88 +56,12 @@ jobs:
           )"
           echo "fingerprint=$fingerprint" >> "$GITHUB_OUTPUT"
 
-      - name: Write candidate metadata
-        if: steps.inspect.outputs.needs_build == 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p candidate-metadata
-          if test -s kernel-upstream-changes.txt; then
-            cp kernel-upstream-changes.txt candidate-metadata/
-          else
-            : > candidate-metadata/kernel-upstream-changes.txt
-          fi
-          cp -a candidate-audit/. candidate-metadata/
-          jq -n \
-            --arg pr "${{ github.event.pull_request.number }}" \
-            --arg head "${{ github.event.pull_request.head.sha }}" \
-            --arg old "${{ steps.inspect.outputs.old_kernel }}" \
-            --arg new "${{ steps.inspect.outputs.new_kernel }}" \
-            --arg fingerprint "${{ steps.fingerprint.outputs.fingerprint }}" \
-            --arg platform_changed "${{ steps.inspect.outputs.platform_changed }}" \
-            '{schema:1, status:"CANDIDATE", pr:($pr|tonumber), head_sha:$head, old_kernel:$old, new_kernel:$new, platform_changed:($platform_changed == "true"), rom:"LineageOS 24.0", android_api:37, build_fingerprint:$fingerprint}' \
-            > candidate-metadata/candidate.json
-
-      - name: Upload candidate metadata
-        if: steps.inspect.outputs.needs_build == 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: CANDIDATE_kernel-lineage-24.0_metadata
-          path: candidate-metadata
-          if-no-files-found: error
-          retention-days: 30
-
-  candidate-build:
-    name: Candidate ${{ matrix.variant }}
-    needs: inspect
-    if: needs.inspect.outputs.needs_build == 'true'
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - variant: sukisu-only
-            enable_susfs: false
-            profile: smoke
-            enable_hide: false
-          - variant: selinux-hide
-            enable_susfs: false
-            profile: smoke
-            enable_hide: true
-          - variant: susfs-extended-stat
-            enable_susfs: true
-            profile: extended-stat
-            enable_hide: false
-          - variant: current-extended-full-hide
-            enable_susfs: true
-            profile: extended-full
-            enable_hide: true
-    uses: ./.github/workflows/build-sukisu-ultra.yml
-    with:
-      enable_susfs: ${{ matrix.enable_susfs }}
-      susfs_profile: ${{ matrix.profile }}
-      enable_selinux_hide: ${{ matrix.enable_hide }}
-      use_anykernel: true
-      use_ccache: true
-      build_channel: candidate
-      base_kernel_commit: ${{ needs.inspect.outputs.old_kernel }}
-
   kernel-candidate-gate:
     name: kernel-candidate-gate
-    if: always()
-    needs: [inspect, candidate-build]
+    needs: inspect
     runs-on: ubuntu-24.04
     steps:
-      - name: Require inspection and every applicable candidate build
-        shell: bash
-        env:
-          INSPECT_RESULT: ${{ needs.inspect.result }}
-          BUILD_RESULT: ${{ needs.candidate-build.result }}
-          NEEDS_BUILD: ${{ needs.inspect.outputs.needs_build }}
+      - name: Record source inspection result
         run: |
-          set -euo pipefail
-          test "$INSPECT_RESULT" = success
-          if test "$NEEDS_BUILD" = true; then
-            test "$BUILD_RESULT" = success
-          else
-            test "$BUILD_RESULT" = skipped
-          fi
+          echo 'Source inspection passed. Build and runtime acceptance are performed locally.'
+          echo 'This lightweight check does not approve a kernel image.'

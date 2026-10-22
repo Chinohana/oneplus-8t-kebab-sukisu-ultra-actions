@@ -62,7 +62,8 @@ def target_platform(pins: dict[str, str]) -> tuple[str, str]:
     return f"LineageOS {version}", api
 
 
-def compute_fingerprint(root: Path) -> tuple[str, str]:
+def compute_fingerprint(root: Path, *, enable_susfs: str = "true", profile: str = "extended-full",
+                        enable_hide: str = "true") -> tuple[str, str]:
     pins = load_pins(root)
     rom, _ = target_platform(pins)
     commit = kernel_commit(root, pins["KERNEL_PIN_PATH"])
@@ -108,9 +109,9 @@ def compute_fingerprint(root: Path) -> tuple[str, str]:
         ("anykernel_repository", pins["ANYKERNEL_REPOSITORY"]),
         ("anykernel_commit", pins["ANYKERNEL_COMMIT"]),
         ("android_ndk_version", pins["ANDROID_NDK_VERSION"]),
-        ("enable_susfs", "true"),
-        ("susfs_profile", "extended-full"),
-        ("enable_selinux_hide", "true"),
+        ("enable_susfs", enable_susfs),
+        ("susfs_profile", profile),
+        ("enable_selinux_hide", enable_hide),
         ("use_anykernel", "true"),
     ]
     canonical = "".join(f"{key}={value}\n" for key, value in ordered) + file_hashes

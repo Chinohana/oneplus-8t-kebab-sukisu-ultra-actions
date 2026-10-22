@@ -1,10 +1,10 @@
 # OnePlus 8T · SukiSU Ultra + SUSFS
 
-[![Build](https://github.com/Chinohana/oneplus-8t-kebab-sukisu-ultra-actions/actions/workflows/build-sukisu-ultra.yml/badge.svg?branch=main)](https://github.com/Chinohana/oneplus-8t-kebab-sukisu-ultra-actions/actions/workflows/build-sukisu-ultra.yml)
+[![Checks](https://github.com/Chinohana/oneplus-8t-kebab-sukisu-ultra-actions/actions/workflows/control-tests.yml/badge.svg?branch=main)](https://github.com/Chinohana/oneplus-8t-kebab-sukisu-ultra-actions/actions/workflows/control-tests.yml)
 
 为 OnePlus 8T 的 LineageOS 24.0 构建 SukiSU Ultra 内核，集成 SUSFS 和“隐藏 SELinux 修改”功能。基于 Linux 4.19，使用 SukiSU `builtin` 分支和 Inline Hook，关闭 KPM 与 kprobes。
 
-[构建内核](https://github.com/Chinohana/oneplus-8t-kebab-sukisu-ultra-actions/actions/workflows/build-sukisu-ultra.yml) · [SUSFS 移植记录](docs/SUSFS-EXPERIMENT.md) · [SELinux hide 移植记录](docs/SELINUX-HIDE-EXPERIMENT.md)
+[本地构建与发布](docs/LOCAL-BUILD.md) · [SUSFS 移植记录](docs/SUSFS-EXPERIMENT.md) · [SELinux hide 移植记录](docs/SELINUX-HIDE-EXPERIMENT.md)
 
 ## 支持的设备与版本
 
@@ -29,33 +29,20 @@ SUSFS 自 v2.2 起移除了 Try Umount、自动添加挂载、Magic Mount 和 Ov
 
 “隐藏 SELinux 修改”默认编译进内核，运行时需手动开启。开启后，应用 UID（≥10000）读取 `/sys/fs/selinux` 的 policy/status 时，会看到 KSU 规则注入前的策略；系统进程和 root 使用实时策略，SELinux 保持 Enforcing。该功能的既有真机测试和实现细节见[移植记录](docs/SELINUX-HIDE-EXPERIMENT.md)。
 
-## 构建
+## 构建、验收与发布
 
-本地与 Actions 共用构建阶段。日常试编译使用 E 盘 `OnePlus8T-Build` 中的专用 WSL；首次使用先看[本地构建说明](docs/LOCAL-BUILD.md)，运行只读预检，再启动编译。正式采纳仍需云端矩阵复核和真机审批。以下为云端入口。
+内核编译、配置矩阵、产物验收、真机测试确认和发布目录生成全部在本地完成。GitHub 保存代码和历史记录，PR 仅运行源码检查及控制脚本测试，不再编译内核或审批产物。
 
-进入 [Actions](https://github.com/Chinohana/oneplus-8t-kebab-sukisu-ultra-actions/actions)，选择 **Build kebab SukiSU Ultra**，点击 **Run workflow**。默认构建完整 SUSFS、SELinux hide 和 AnyKernel3 ZIP，并开启 ccache。
+在专用 WSL `OnePlus8T-Build` 的 `~/oneplus8t-kernel/control` 中运行：
 
-| 选项 | 用途 |
-| --- | --- |
-| `Enable SUSFS` | 编译 SUSFS；关闭后构建纯 SukiSU 内核 |
-| `SUSFS profile` | 选择 SUSFS 功能配置，见下表 |
-| `Enable SELinux hide` | 编译“隐藏 SELinux 修改”，可独立于 SUSFS 开关 |
-| `Use AnyKernel3` | 打包为 ZIP；关闭后输出 `Image`、`System.map`、配置和构建来源记录（provenance） |
-| `Use ccache` | 缓存编译输出，加快重复构建 |
-| `Kernel source` | `approved-pin` 使用已批准的内核提交；`latest-lineage-24.0` 使用运行时获取的上游最新提交 |
+```bash
+python3 scripts/build/local.py --check-only
+python3 scripts/build/local.py
+```
 
-| SUSFS 配置 | 功能 |
-| --- | --- |
-| `smoke` | SUSFS 核心与日志 |
-| `minimal-mount` | `smoke` + SUS Mount |
-| `extended-stat` | `minimal-mount` + SUS Kstat |
-| `extended-full` | 上述九项功能，默认配置 |
+默认启用 SUSFS `extended-full`、SELinux hide、AnyKernel3 和 ccache。日常试编译只运行需要的配置；准备正式发布时，再在本地执行四组合矩阵，并为实际测试的安装包填写真机记录。版本、指纹和产物哈希全部通过后，才生成本地验收记录和发布目录。
 
-关闭 SUSFS 后，`SUSFS profile` 不生效。新配置首次构建约需 75–90 分钟，缓存建立后，同样输入的重复构建预计约需 30–45 分钟。
-
-构建成功后，在该次运行页面下载 kernel artifact，核对其中的 SHA-256 和 provenance。构建会检查源码版本、补丁、内核配置、符号、编译警告和 Image 大小。
-
-选择最新内核源码时，产物以 `UNAPPROVED_LATEST_` 开头，保留 30 天；SukiSU、SUSFS、编译器和打包工具仍使用各自的固定版本。该选项仅影响本次构建，正式构建的内核提交通过下述更新流程调整。
+完整参数、矩阵入口、真机记录格式和发布命令见[本地构建说明](docs/LOCAL-BUILD.md)。原云端构建和审批工作流只保留迁移提示，手动运行也不会生成或批准内核包。
 
 ## 安装与恢复
 
@@ -78,11 +65,9 @@ TA Enhanced v5.53.1 会停止 LineageOS 充电 HAL，导致软重启卡在启动
 
 ## 内核更新
 
-仓库每天检查 LineageOS `lineage-24.0` 的新提交，并创建候选 PR。候选包以 `CANDIDATE_` 开头，保留 30 天。CI 会编译纯 SukiSU、SELinux hide、SUSFS `extended-stat` 和 `extended-full + SELinux hide` 四种组合；构建失败会记录到 `Kernel update blocked: lineage-24.0` Issue。
+仓库仍通过 Dependabot 检查 LineageOS `lineage-24.0` 提交并创建候选 PR。PR 的源码检查确认更新方向和目标分支，编译、验收和发布由本地工具完成。PR 检查通过不代表候选安装包已通过真机测试。
 
-采用候选版本前，先核对包的 SHA-256，按上面的步骤完成真机测试，再运行 **Approve kernel candidate** 并勾选真机测试确认项。工作流会定位唯一开放且构建成功的候选 PR，核验构建指纹和 ZIP 哈希，保存审批记录，最后由人工审核合并。
-
-审批对应具体的候选内容。内核、补丁、工具版本或构建脚本变化后，需要重新构建和测试。首次迁移审批流程时，只有 `Image`、配置和 `System.map` 均与旧批准构建相同，才能沿用旧真机结果。
+正式发布需要同一构建提交的四种本地配置：纯 SukiSU、SELinux hide、SUSFS `extended-stat`、`extended-full + SELinux hide`。本地验收还会核对完整配置包的 SHA-256、Image、配置、System.map、SUSFS 工具、阶段结果和真机记录。产物或构建输入变化后，旧测试记录不能用于新的候选。
 
 这里跟进的是内核修复；LineageOS 月更中的 Android 系统、驱动二进制文件和应用层修复，仍需更新 ROM。
 

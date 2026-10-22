@@ -1,6 +1,6 @@
 # 本地构建
 
-本地和 GitHub Actions 使用同一组构建阶段。日常试编译在 `OnePlus8T-Build` 的 Ubuntu 24.04 中运行；正式采纳仍需要云端矩阵复核和真机审批。目录迁移或本地编译通过，都不改变候选包的审批状态。
+内核构建、配置矩阵、验收和发布全部在本地完成。GitHub 只保存代码、历史记录和轻量检查。日常试编译在 `OnePlus8T-Build` 的 Ubuntu 24.04 中运行；正式发布还需要本地矩阵及实际产物的真机测试。
 
 Windows 编译库位于 `E:\Codex Project\OnePlus8T-Build`。源码、工具链和编译缓存放在该发行版的 `/home/chino/oneplus8t-kernel`，占用 E 盘上的 ext4 虚拟磁盘；Windows 下的 `artifacts` 保存导出的交付物。
 
@@ -18,7 +18,7 @@ python3 scripts/build/local.py
 
 后续构建可将示例分支替换为已审查的分支或提交。每次运行会创建独立检出，运行中的脚本不受外部入口文件修改影响。源码、补丁和工具链版本来自该提交的 pins。
 
-默认构建固定内核提交、SUSFS `extended-full`、SELinux hide 和 AnyKernel3 ZIP，并启用 ccache，使用 8 个并行任务。Ubuntu 依赖与云端一致：
+默认构建固定内核提交、SUSFS `extended-full`、SELinux hide 和 AnyKernel3 ZIP，并启用 ccache，使用 8 个并行任务。Ubuntu 构建依赖：
 
 ```bash
 sudo apt update
@@ -40,7 +40,7 @@ sudo apt install -y bc bison build-essential ccache cpio curl file flex git jq l
 | `--storage`、`--export-dir` | 编译库根目录、产物导出目录 |
 | `--clang`、`--ndk` | 指定已安装的 Linux 工具链 |
 | `--cache-dir` | 指定持久编译缓存目录 |
-| `--kernel-seed`、`--sm8250-seed` | 可选的本地 Git 对象种子；命中固定提交时使用 |
+| `--kernel-seed`、`--sukisu-seed`、`--sm8250-seed` | 可选的本地 Git 对象种子；命中固定提交时使用 |
 | `--check-only` | 只检查环境，不创建运行目录或启动编译 |
 | `--minimum-free-gib` | 默认 `50`，可提高，不能低于 50 GiB |
 
@@ -58,19 +58,46 @@ python3 scripts/build/local.py --export-run ~/oneplus8t-kernel/runs/<运行编�
 
 若已有 `.partial` 目录，先检查残留内容，再将其移开或清理后重试。入口不会覆盖已有交付目录。
 
-交付包含内核包或原始 Image、配置、System.map、审计记录和 provenance；启用 SUSFS 时另带用户态工具。provenance 记录真实的本地运行编号，不生成 GitHub run ID。本地产物始终按未批准候选处理。
+交付包含内核包或原始 Image、配置、System.map、审计记录和 provenance；启用 SUSFS 时另带用户态工具。provenance 记录真实的本地运行编号，不生成 GitHub run ID。编译产物先按未批准候选处理；本地验收通过后才进入发布目录。
 
-## 云端对照
+## 本地矩阵与验收
 
-云端继续运行纯 SukiSU、SELinux hide、SUSFS extended-stat、extended-full + hide 四组合。对照必须使用同一构建提交、pins 和功能参数。下载完整功能候选的 kernel 和 tool artifact，分别放入同一目录的 `kernel`、`tool` 后运行：
+日常修改只编译需要的配置。准备发布时，在干净的构建提交上执行四组合矩阵：
 
 ```bash
-python3 scripts/build/verify-artifacts.py /mnt/e/Codex\ Project/OnePlus8T-Build/artifacts/<本地运行编号> --compare <云端产物目录>
+python3 scripts/release/matrix.py --check-only
+python3 scripts/release/matrix.py --output ~/oneplus8t-kernel/audit/matrix-<版本>.json
 ```
 
-校验器检查交付哈希、输入指纹、Image、配置、System.map、用户态工具和 ZIP 成员内容。ZIP 容器本身可因封装时间不同而有不同哈希；核心产物或成员内容有差异时，命令失败。需要查明原因后才能记录双端等价。
+矩阵按顺序构建纯 SukiSU、SELinux hide、SUSFS extended-stat 和 extended-full + hide，共享本地 ccache。每个组合保存独立交付；任何一个失败，矩阵都不能用于验收。矩阵文件只引用已完成的本地产物，不能用云端结果替代。
 
-正式候选的审批仍绑定云端产物、具体 PR head 和真机测试。修改共用脚本也会改变构建指纹，并要求重新构建和审批。
+完整配置产物通过实际手机测试后，先生成对应的记录表：
+
+```bash
+python3 scripts/release/local.py phone-template --artifacts <完整配置交付目录> --output <真机记录.json>
+```
+
+模板预填构建提交、运行编号、安装包和 Image 哈希，所有检查项默认为 `false`。由测试者填写姓名、带时区的测试时间，并按实际结果逐项确认启动、ADB、root、SELinux Enforcing、SUSFS、SELinux hide、存储解密、Wi-Fi、移动网络、前后相机、指纹、音频、文件读写及内核日志。生成模板不代表已经测试，也不会操作手机。
+
+使用构建时保存的精确检出完成验收：
+
+```bash
+python3 scripts/release/local.py accept --candidate <完整配置运行目录> --artifacts <完整配置交付目录> --matrix <矩阵.json> --phone-test <真机记录.json> --output <验收.json>
+```
+
+验收工具重新计算各组合的指纹，核对 Git 提交、pins、完整审计阶段、交付哈希和真机记录。完整配置包必须是矩阵中的同一个包。缺少组合、未完成的测试项、被改写的产物或不匹配的提交都会使验收失败。验收记录只写入本地，不依赖 Actions run、bot 评论或 GitHub 的审批工作流。
+
+## 生成发布目录
+
+```bash
+python3 scripts/release/local.py stage --candidate <完整配置运行目录> --artifacts <完整配置交付目录> --matrix <矩阵.json> --phone-test <真机记录.json> --acceptance <验收.json> --output <版本发布目录>
+```
+
+生成发布目录前会再次核验全部证据，并确认验收记录仍与当前文件一致。目录包含安装包、SUSFS 用户态工具、配置、System.map、来源记录、本地验收及真机记录、去除本地路径的矩阵摘要和 `SHA256SUMS`。通过 `.partial` 临时目录校验后才转为正式目录，已有目录不会被覆盖。
+
+该目录就是本地版本交付。将来如需上传到 GitHub Releases，可以从本地上传已验收文件；上传不再触发云端编译或复验。当前命令不会上传、创建 tag 或操作手机。
+
+原 Actions 编译、云端审批和构建结果通知入口已停用。PR 的 `kernel-candidate-gate` 与 `kernel-runtime-policy` 保留原检查名称，输出本地验收说明，不能作为任何产物的验收凭据。
 
 ## 容量检查
 
