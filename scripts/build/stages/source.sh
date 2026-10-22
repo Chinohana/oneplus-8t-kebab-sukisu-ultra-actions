@@ -1,6 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+prepare_sukisu() {
+  git init KernelSU
+  git -C KernelSU remote add origin "$SUKISU_REPOSITORY"
+  git -C KernelSU fetch --no-tags --depth=1 \
+    "${SUKISU_SEED:-$SUKISU_REPOSITORY}" "$SUKISU_COMMIT"
+  git -C KernelSU checkout --detach "$SUKISU_COMMIT"
+  # Match the pinned setup.sh integration without downloading it or running git pull.
+  ln -sf ../KernelSU/kernel drivers/kernelsu
+  grep -q kernelsu drivers/Makefile || printf '\nobj-$(CONFIG_KSU) += kernelsu/\n' >> drivers/Makefile
+  grep -q 'drivers/kernelsu/Kconfig' drivers/Kconfig || \
+    sed -i '/endmenu/i\source "drivers/kernelsu/Kconfig"' drivers/Kconfig
+}
+
 git init kernel_common
 git -C kernel_common remote add origin "$KERNEL_REPOSITORY"
 kernel_fetch_source="${KERNEL_SEED:-$KERNEL_REPOSITORY}"
@@ -14,9 +27,7 @@ sed -i '$i res=$(echo "$res" | sed '\''s/-dirty//g'\'')' \
   kernel_common/scripts/setlocalversion
 
 cd kernel_common
-curl --fail --location --show-error --silent \
-  "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/${SUKISU_COMMIT}/kernel/setup.sh" \
-  | bash -s "$SUKISU_COMMIT"
+prepare_sukisu
 test -d KernelSU
 test "$(git -C KernelSU rev-parse HEAD)" = "$SUKISU_COMMIT"
 test "$(
@@ -46,9 +57,7 @@ sed -i 's/ -dirty//g' kernel_baseline/scripts/setlocalversion
 sed -i '$i res=$(echo "$res" | sed '\''s/-dirty//g'\'')' \
   kernel_baseline/scripts/setlocalversion
 cd kernel_baseline
-curl --fail --location --show-error --silent \
-  "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/${SUKISU_COMMIT}/kernel/setup.sh" \
-  | bash -s "$SUKISU_COMMIT"
+prepare_sukisu
 test -d KernelSU
 test "$(git -C KernelSU rev-parse HEAD)" = "$SUKISU_COMMIT"
 test "$(git -C KernelSU remote get-url origin)" = "$SUKISU_REPOSITORY"
