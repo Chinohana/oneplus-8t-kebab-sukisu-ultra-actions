@@ -75,7 +75,7 @@ def check_run(root, candidate, susfs, profile, hide):
 
 
 def check_phone(phone, build):
-    for key in ('builder_commit', 'package_sha256', 'image_sha256', 'local_run_id'):
+    for key in ('builder_commit', 'package_sha256', 'image_sha256', 'tool_sha256', 'local_run_id'):
         if phone.get(key) != build[key]:
             raise ValueError(f'Phone test does not match {key}')
     if not isinstance(phone.get('tester'), str) or not phone['tester'].strip():
@@ -136,6 +136,7 @@ def main():
             provenance = fields(args.artifacts)
             write_new(args.output, {'builder_commit': provenance['builder_commit'],
                       'local_run_id': provenance['local_run_id'], 'image_sha256': checked['image_sha256'],
+                      'tool_sha256': checked.get('tool_sha256'),
                       'package_sha256': sha(args.artifacts / 'kernel' / provenance['package']),
                       'tester': '', 'tested_at': '', 'checks': dict.fromkeys(CHECKS, False), 'notes': ''})
             return
