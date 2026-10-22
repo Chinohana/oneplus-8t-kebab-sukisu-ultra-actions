@@ -30,12 +30,14 @@ esac
 
 file_hashes="$output_dir/build-input-files.sha256"
 git -C "$root" ls-files -z -- \
+  .gitattributes \
   .gitmodules \
   config/build-pins.env \
   config/migration-baseline-lineage-23.2.sha256 \
   '.github/scripts/*.sh' \
   .github/workflows/build-sukisu-ultra.yml \
-  'patches/*.patch' |
+  'patches/*.patch' \
+  'scripts/build/*' |
   LC_ALL=C sort -z |
   while IFS= read -r -d '' file; do
     hash="$(sha256sum < "$root/$file" | awk '{print $1}')"
