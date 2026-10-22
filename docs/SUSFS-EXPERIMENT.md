@@ -1,5 +1,7 @@
 # SUSFS 的 Linux 4.19 移植记录
 
+本文是历史移植和验证记录。当前编译、验收和发布全部在本地执行，操作入口见[本地构建说明](LOCAL-BUILD.md)；下文保留的云端步骤只用于追溯。
+
 本项目在 OnePlus 8T 的 Linux 4.19 内核上集成 NON-GKI SUSFS。当前主线使用 v2.3 / SukiSU 41001；本文记录移植方案和早期 v2.2 真机测试，24.0 的批准结果见[迁移记录](LINEAGE-24-EXPERIMENT.md)。
 
 无 SUSFS 的原始基线保存在 `legacy@1bc3fb3`，早期移植过程保存在 `experiment/susfs-v2.2-sm8250-4.19`。
