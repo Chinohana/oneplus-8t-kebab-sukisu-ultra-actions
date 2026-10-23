@@ -280,7 +280,8 @@ def build(args):
         shutil.copyfile(audit / 'local-result.json', target / 'artifacts/kernel/audit/local-result.json')
         destination = export_artifacts(target, args.export_dir)
         sample_space()
-        space.update(export=tree_usage(destination), export_path=str(destination))
+        space.update(run=space['samples'][-1]['run'], breakdown=usage_breakdown(target),
+                     export=tree_usage(destination), export_path=str(destination))
         space['minimum_host_free_bytes'] = min(space['minimum_host_free_bytes'], shutil.disk_usage(args.storage).free)
         space['sampled_peak_run_allocated_bytes'] = max(item['run']['allocated_bytes'] for item in space['samples'])
         space['host_free_decrease_bytes'] = space['initial_host_free_bytes'] - space['minimum_host_free_bytes']
