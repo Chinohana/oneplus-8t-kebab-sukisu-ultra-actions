@@ -42,13 +42,15 @@ sudo apt install -y bc bison build-essential ccache cpio curl file flex git jq l
 | `--cache-dir` | 指定持久编译缓存目录 |
 | `--kernel-seed`、`--sukisu-seed`、`--sm8250-seed` | 可选的本地 Git 对象种子；命中固定提交时使用 |
 | `--check-only` | 只检查环境，不创建运行目录或启动编译 |
-| `--minimum-free-gib` | 默认 `50`，可提高，不能低于 50 GiB |
+| `--minimum-free-gib` | 默认 `0`，不设置启动容量门槛；可按需指定非负 GiB 数值 |
 
-预检同时检查 Linux 和 Windows 存储可用空间。WSL 中显示的虚拟磁盘容量不能代替宿主存储剩余空间。并行度先保持 `8`，再根据实际内存和耗时调整。
+预检不再要求剩余空间达到 50 GiB。只有显式指定 `--minimum-free-gib` 时，才按该值检查 Linux 工作区、编译库和导出位置。WSL 中显示的虚拟磁盘容量不能代替宿主存储剩余空间。并行度先保持 `8`，再根据实际内存和耗时调整。
 
 ## 日志、交付和重试
 
 运行目录为 `~/oneplus8t-kernel/runs/local-full-时间戳`。完整日志在 `audit/local-pipeline.log`，`audit/local-result.json` 记录阶段退出码、耗时，以及每 5 秒采样的 WSL 内存使用峰值、文件系统使用峰值和宿主剩余空间下限。内存和磁盘指标覆盖整个环境，不能当作编译进程的独占用量。
+
+`audit/space-samples.jsonl` 每约 60 秒记录本次运行目录的普通文件数、目录数、符号链接数、逻辑字节数和实际分配字节数。扫描不跟随工具链、缓存等符号链接，同一硬链接内容只计一次容量。`audit/space-usage.json` 汇总运行前的文件系统用量、运行目录及各输出目录的最终占用、已有缓存的净变化，以及成功导出后的文件数与占用。运行目录采样峰值可能遗漏短时临时文件；文件系统指标每约 5 秒采样，包含同一磁盘上的其他活动。宿主空间下降还可能受到 WSL 虚拟磁盘分配方式影响，不能直接当作生成文件的大小。
 
 完成的产物先在 Linux 中校验，再导出到 Windows 的 `artifacts/运行编号`。导出通过 `.partial` 临时目录进行，复核通过后才改为正式目录。导出失败不需要重新编译：
 

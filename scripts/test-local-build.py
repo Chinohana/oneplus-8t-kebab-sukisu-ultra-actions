@@ -127,6 +127,42 @@ class Preflight(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'Insufficient space'):
                 local.check_space([Path('/')], 50)
 
+    def test_no_default_reserve_and_smaller_explicit_reserve(self):
+        with patch.object(local.shutil, 'disk_usage', return_value=SimpleNamespace(free=5 * 2**30)):
+            local.check_space([Path('/')], 0)
+            local.check_space([Path('/')], 2)
+            with self.assertRaisesRegex(ValueError, 'Insufficient space'):
+                local.check_space([Path('/')], 10)
+
+    def test_usage_excludes_linked_cache_and_distinguishes_sparse_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            target = root / 'run'
+            target.mkdir()
+            external = root / 'cache'
+            external.mkdir()
+            (external / 'existing').write_bytes(b'x' * 10000)
+            (target / '.ccache').symlink_to(external, target_is_directory=True)
+            with (target / 'sparse').open('wb') as file:
+                file.truncate(16 * 2**20)
+            usage = local.tree_usage(target)
+            self.assertEqual(usage['files'], 1)
+            self.assertEqual(usage['symlinks'], 1)
+            self.assertGreaterEqual(usage['logical_bytes'], 16 * 2**20)
+            self.assertLess(usage['allocated_bytes'], 16 * 2**20)
+
+    def test_usage_counts_hardlink_paths_but_not_duplicate_content(self):
+        import os
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / 'file').write_bytes(b'x' * 10000)
+            before = local.tree_usage(root)
+            os.link(root / 'file', root / 'second-name')
+            after = local.tree_usage(root)
+            self.assertEqual(after['files'], before['files'] + 1)
+            self.assertEqual(after['logical_bytes'], before['logical_bytes'])
+            self.assertEqual(after['allocated_bytes'], before['allocated_bytes'])
+
     def test_missing_dependency(self):
         with patch.object(local.shutil, 'which', return_value=None):
             with self.assertRaisesRegex(ValueError, 'Missing dependency'):
