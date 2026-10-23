@@ -1,5 +1,22 @@
+diff --git a/kernel/extension/cpu_spoof.c b/kernel/extension/cpu_spoof.c
+index 0007c2fd..41981430 100644
+--- a/kernel/extension/cpu_spoof.c
++++ b/kernel/extension/cpu_spoof.c
+@@ -170,8 +170,12 @@ static int set_spoof_cpu(const struct ksu_set_spoof_cpu_cmd *cmd)
+                         (struct clocksource **)find_kernel_symbol_exact(
+                             "curr_clocksource");
+                     if (curr_cs_ptr && *curr_cs_ptr) {
++#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 0, 0)
++                        (*curr_cs_ptr)->archdata.vdso_direct = true;
++#else
+                         (*curr_cs_ptr)->vdso_clock_mode =
+                             VDSO_CLOCKMODE_ARCHTIMER;
++#endif
+                     } else {
+                         pr_warn("ksu: set_spoof_cpu failed to resolve 'curr_clocksource'\n");
+                         ++missing;
 diff --git a/kernel/feature/mount_hide.c b/kernel/feature/mount_hide.c
-index fb795ae..804dd9f 100644
+index fb795aec..804dd9f4 100644
 --- a/kernel/feature/mount_hide.c
 +++ b/kernel/feature/mount_hide.c
 @@ -7,6 +7,7 @@
@@ -20,52 +37,24 @@ index fb795ae..804dd9f 100644
      name = file->f_path.dentry->d_name.name;
      if (!name)
          return false;
-diff --git a/kernel/manager/throne_tracker.c b/kernel/manager/throne_tracker.c
-index cea4da6..85ec08f 100644
---- a/kernel/manager/throne_tracker.c
-+++ b/kernel/manager/throne_tracker.c
-@@ -40,15 +40,14 @@ static int crown_manager(const char *apk, const char *apk_dir, struct list_head
-     struct uid_data *np;
-     bool builtin_present_this_call = false;
-     bool builtin_crowned_this_call = false;
--    char pkg[KSU_MAX_PACKAGE_NAME];
--    const char *builtin_pkg = KSU_PACKAGE_NAME;
-+    char pkg[KSU_MAX_PACKAGE_NAME] = {};
-+
-+    if (get_pkg_from_apk_dir_path(pkg, apk_dir) < 0) {
-+        pr_err("Failed to get package name from apk dir path: %s\n", apk_dir);
-+        return 0;
-+    }
+diff --git a/kernel/ksu_main.c b/kernel/ksu_main.c
+index 44652407..85770f26 100644
+--- a/kernel/ksu_main.c
++++ b/kernel/ksu_main.c
+@@ -80,9 +80,11 @@
+ #include "extension/umount_paths.c"
+ #include "extension/dynamic_manager.c"
+ #include "extension/kpm.c"
++#ifdef CONFIG_KPM
+ #include "extension/kpm/kpm.c"
+ #include "extension/kpm/compact.c"
+ #include "extension/kpm/super_access.c"
++#endif
+ #include "extension/susfs_extension.c"
+ #include "extension/dynamic_sig_fallback.c"
  
-     if (sig_fallback) {
--        if (get_pkg_from_apk_dir_path(pkg, apk_dir) < 0) {
--            pr_err("Failed to get package name from apk dir path: %s\n", apk_dir);
--            return 0;
--        }
--        builtin_pkg = pkg;
- 
-         pr_info("manager pkg: %s\n", pkg);
- 
-@@ -61,7 +60,7 @@ static int crown_manager(const char *apk, const char *apk_dir, struct list_head
-                 break;
-             }
-         }
--    } else {
-+    } else if (!strncmp(pkg, KSU_PACKAGE_NAME, KSU_MAX_PACKAGE_NAME)) {
-         list_for_each_entry (np, list, list) {
-             if (strncmp(np->package, KSU_PACKAGE_NAME, KSU_MAX_PACKAGE_NAME) == 0) {
-                 builtin_present_this_call = true;
-@@ -96,7 +95,7 @@ static int crown_manager(const char *apk, const char *apk_dir, struct list_head
-         return 0;
- 
-     list_for_each_entry (np, list, list) {
--        if (strncmp(np->package, builtin_pkg, KSU_MAX_PACKAGE_NAME) == 0)
-+        if (strncmp(np->package, pkg, KSU_MAX_PACKAGE_NAME) != 0)
-             continue;
-         /*
-          * For dynamic managers the (package, uid) pair must match a
 diff --git a/kernel/policy/feature.c b/kernel/policy/feature.c
-index 05ae163..1d6e447 100644
+index 05ae1636..1d6e447f 100644
 --- a/kernel/policy/feature.c
 +++ b/kernel/policy/feature.c
 @@ -7,7 +7,9 @@ static const char *const feature_names[KSU_FEATURE_MAX] = {
@@ -79,7 +68,7 @@ index 05ae163..1d6e447 100644
      [KSU_FEATURE_MOUNT_HIDE] = "mount_hide",
  };
 diff --git a/kernel/runtime/ksud.c b/kernel/runtime/ksud.c
-index 6e1b528..309cb40 100644
+index ad6c6578..930aa461 100644
 --- a/kernel/runtime/ksud.c
 +++ b/kernel/runtime/ksud.c
 @@ -55,7 +55,9 @@ void on_post_fs_data(void)
@@ -92,20 +81,20 @@ index 6e1b528..309cb40 100644
      // retry forced features which failed at second stage
      ksu_feature_apply_forced();
      ksu_extension_apply_forced();
-@@ -220,7 +222,9 @@ int ksu_handle_execveat_ksud(int *fd, struct filename **filename_ptr,
-             char buf[16];
-             if (check_argv(*argv, 1, "second_stage", buf, sizeof(buf))) {
-                 pr_info("/system/bin/init second_stage executed\n");
+@@ -202,7 +204,9 @@ int ksu_handle_execveat_ksud(int *fd, struct filename **filename_ptr,
+ #ifndef KSU_NO_PREINIT
+                 ksu_preinit_release();
+ #endif
 +#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
                  ksu_selinux_hide_handle_second_stage();
 +#endif
                  apply_kernelsu_rules();
                  cache_sid();
                  setup_ksu_cred();
-@@ -295,7 +299,9 @@ int ksu_handle_execveat_ksud(int *fd, struct filename **filename_ptr, struct use
-         char buf[16];
-         if (!init_second_stage_executed && check_argv(*argv, 1, "second_stage", buf, sizeof(buf))) {
-             pr_info("/system/bin/init second_stage executed\n");
+@@ -280,7 +284,9 @@ int ksu_handle_execveat_ksud(int *fd, struct filename **filename_ptr, struct use
+ #ifndef KSU_NO_PREINIT
+             ksu_preinit_release();
+ #endif
 +#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
              ksu_selinux_hide_handle_second_stage();
 +#endif
@@ -113,7 +102,7 @@ index 6e1b528..309cb40 100644
              cache_sid();
              setup_ksu_cred();
 diff --git a/kernel/selinux/rules.c b/kernel/selinux/rules.c
-index 3d5b86e..9084986 100644
+index 3d5b86e9..9084986a 100644
 --- a/kernel/selinux/rules.c
 +++ b/kernel/selinux/rules.c
 @@ -151,7 +151,9 @@ static int apply_kernelsu_rules_fn(void *ptr)
@@ -137,10 +126,10 @@ index 3d5b86e..9084986 100644
  }
  
 diff --git a/kernel/sulog/event.c b/kernel/sulog/event.c
-index e45f01f..7768000 100644
+index f012421d..2813209e 100644
 --- a/kernel/sulog/event.c
 +++ b/kernel/sulog/event.c
-@@ -374,9 +374,14 @@ static struct ksu_sulog_pending_event *ksu_sulog_capture_grant_root(const struct
+@@ -372,9 +372,14 @@ static struct ksu_sulog_pending_event *ksu_sulog_capture_grant_root(const struct
      struct ksu_sulog_event *event;
  
      // This is actually stupid fix
@@ -155,34 +144,3 @@ index e45f01f..7768000 100644
      if (!pending)
          return NULL;
  
-diff --git a/kernel/ksu.c b/kernel/ksu.c
---- a/kernel/ksu.c
-+++ b/kernel/ksu.c
-@@ -71,9 +71,11 @@
- #include "extension/umount_paths.c"
- #include "extension/dynamic_manager.c"
- #include "extension/kpm.c"
-+#ifdef CONFIG_KPM
- #include "extension/kpm/kpm.c"
- #include "extension/kpm/compact.c"
- #include "extension/kpm/super_access.c"
-+#endif
- #include "extension/susfs_extension.c"
- 
- #include "policy/allowlist.c"
-diff --git a/kernel/extension/cpu_spoof.c b/kernel/extension/cpu_spoof.c
---- a/kernel/extension/cpu_spoof.c
-+++ b/kernel/extension/cpu_spoof.c
-@@ -170,8 +170,12 @@
-                         (struct clocksource **)find_kernel_symbol_exact(
-                             "curr_clocksource");
-                     if (curr_cs_ptr && *curr_cs_ptr) {
-+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 0, 0)
-+                        (*curr_cs_ptr)->archdata.vdso_direct = true;
-+#else
-                         (*curr_cs_ptr)->vdso_clock_mode =
-                             VDSO_CLOCKMODE_ARCHTIMER;
-+#endif
-                     } else {
-                         pr_warn("ksu: set_spoof_cpu failed to resolve 'curr_clocksource'\n");
-                         ++missing;

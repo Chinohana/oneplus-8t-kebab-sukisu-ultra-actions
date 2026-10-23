@@ -89,8 +89,7 @@ diff -u "$BUILD_TEMP/baseline-hook-files.expected" \
 cat > "$BUILD_TEMP/sukisu-compat-files.expected" <<'EOF'
 kernel/extension/cpu_spoof.c
 kernel/feature/mount_hide.c
-kernel/ksu.c
-kernel/manager/throne_tracker.c
+kernel/ksu_main.c
 kernel/policy/feature.c
 kernel/runtime/ksud.c
 kernel/selinux/rules.c
@@ -111,7 +110,7 @@ kernel/Kconfig
 kernel/feature/selinux_hide.c
 kernel/feature/selinux_hide.h
 kernel/include/uapi/feature.h
-kernel/ksu.c
+kernel/ksu_main.c
 kernel/runtime/ksud.c
 kernel/selinux/rules.c
 kernel/selinux/sepolicy.c

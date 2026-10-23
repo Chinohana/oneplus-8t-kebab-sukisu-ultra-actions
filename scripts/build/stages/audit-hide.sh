@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ksu_dir=kernel_experiment/KernelSU/kernel
-test "$(grep -Fc 'ksu_selinux_hide_init();' "$ksu_dir/ksu.c")" = 1
+test "$(grep -Fc 'ksu_selinux_hide_init();' "$ksu_dir/ksu_main.c")" = 1
 test "$(grep -Fc 'ksu_selinux_hide_handle_post_fs_data();' "$ksu_dir/runtime/ksud.c")" = 1
 test "$(grep -Fc 'ksu_selinux_hide_handle_second_stage();' "$ksu_dir/runtime/ksud.c")" = 2
 test "$(grep -Fc 'ksu_selinux_hide_drop_backup_if_unused();' "$ksu_dir/runtime/ksud.c")" = 1
@@ -38,8 +38,10 @@ done
 grep -Fq 'READ_ONCE(ksu_selinux_hide_running)' \
   kernel_experiment/security/selinux/selinuxfs.c
 
-if grep -R -Eq 'kprobe|patch_text|find_kernel_symbol' \
-    "$ksu_dir/feature/selinux_hide.c" \
+sed -n '/^#else \/\* Linux 4.19 \*\//,$p' \
+  "$ksu_dir/feature/selinux_hide.c" > "$BUILD_TEMP/selinux-hide-4.19.c"
+if grep -Eq 'kprobe|patch_text|find_kernel_symbol' \
+    "$BUILD_TEMP/selinux-hide-4.19.c" \
     kernel_experiment/security/selinux/selinuxfs.c; then
   echo "::error::Runtime hooking was introduced by the 4.19 port."
   exit 1
