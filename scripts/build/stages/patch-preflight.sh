@@ -89,8 +89,8 @@ diff -u "$BUILD_TEMP/baseline-hook-files.expected" \
 cat > "$BUILD_TEMP/sukisu-compat-files.expected" <<'EOF'
 kernel/Makefile
 kernel/extension/cpu_spoof.c
-kernel/kernel_includes.h
 kernel/feature/mount_hide.c
+kernel/kernel_includes.h
 kernel/ksu_main.c
 kernel/policy/feature.c
 kernel/runtime/ksud.c
