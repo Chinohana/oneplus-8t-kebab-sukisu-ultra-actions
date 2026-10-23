@@ -182,6 +182,58 @@ index 8492b9cd..be66ad42 100644
  $(info -- $(REPO_NAME) version: $(KSU_VERSION) [$(KSU_VERSION_FULL)])
  
  ccflags-y += -DKSU_VERSION=$(KSU_VERSION)
+diff --git a/kernel/extension/dynamic_sig_fallback.c b/kernel/extension/dynamic_sig_fallback.c
+index 84ff67bd..df15b912 100644
+--- a/kernel/extension/dynamic_sig_fallback.c
++++ b/kernel/extension/dynamic_sig_fallback.c
+@@ -55,12 +55,29 @@ struct fb_path {
+     struct list_head list;
+ };
+ 
++static bool fb_verify_dynamic(const char *apk, const char *apk_dir,
++                              struct list_head *uid_data)
++{
++    struct uid_data *np;
++    char pkg[KSU_MAX_PACKAGE_NAME] = {};
++
++    if (!ksu_manager_enabled() || get_pkg_from_apk_dir_path(pkg, apk_dir) < 0)
++        return false;
++
++    list_for_each_entry (np, uid_data, list) {
++        if (!strncmp(np->package, pkg, KSU_MAX_PACKAGE_NAME))
++            return ksu_dynamic_manager_verify_apk((char *)apk, np->package, np->uid);
++    }
++    return false;
++}
++
+ struct fb_dir_ctx {
+     struct dir_context ctx;
+     struct list_head *path_list;
+     char *parent_dir;
+     int depth;
+     bool matched;
++    struct list_head *uid_data;
+ };
+ 
+ static FILLDIR_RETURN_TYPE fb_actor(struct dir_context *ctx, const char *name, int namelen, loff_t off, u64 ino,
+@@ -83,7 +100,8 @@ static FILLDIR_RETURN_TYPE fb_actor(struct dir_context *ctx, const char *name, i
+     }
+ 
+     if (d_type == DT_REG && namelen == 8 && !memcmp(name, "base.apk", 8)) {
+-        if (!c->matched && is_manager_apk(dirpath))
++        if (!c->matched && (is_manager_apk(dirpath) ||
++                            fb_verify_dynamic(dirpath, c->parent_dir, c->uid_data)))
+             c->matched = true;
+         return FILLDIR_ACTOR_CONTINUE;
+     }
+@@ -143,6 +161,7 @@ static bool fb_crown_by_signature(struct list_head *uid_data)
+                 .parent_dir = pos->dirpath,
+                 .depth = pos->depth,
+                 .matched = false,
++                .uid_data = uid_data,
+             };
+             struct file *file;
+ 
 diff --git a/kernel/kernel_includes.h b/kernel/kernel_includes.h
 index 422fde3d..888b8f1b 100644
 --- a/kernel/kernel_includes.h
