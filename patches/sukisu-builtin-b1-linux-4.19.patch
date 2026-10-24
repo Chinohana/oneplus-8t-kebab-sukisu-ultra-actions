@@ -1,5 +1,22 @@
+diff --git a/kernel/extension/cpu_spoof.c b/kernel/extension/cpu_spoof.c
+index 0007c2fd..41981430 100644
+--- a/kernel/extension/cpu_spoof.c
++++ b/kernel/extension/cpu_spoof.c
+@@ -170,8 +170,12 @@ static int set_spoof_cpu(const struct ksu_set_spoof_cpu_cmd *cmd)
+                         (struct clocksource **)find_kernel_symbol_exact(
+                             "curr_clocksource");
+                     if (curr_cs_ptr && *curr_cs_ptr) {
++#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 0, 0)
++                        (*curr_cs_ptr)->archdata.vdso_direct = true;
++#else
+                         (*curr_cs_ptr)->vdso_clock_mode =
+                             VDSO_CLOCKMODE_ARCHTIMER;
++#endif
+                     } else {
+                         pr_warn("ksu: set_spoof_cpu failed to resolve 'curr_clocksource'\n");
+                         ++missing;
 diff --git a/kernel/feature/mount_hide.c b/kernel/feature/mount_hide.c
-index fb795ae..804dd9f 100644
+index fb795aec..804dd9f4 100644
 --- a/kernel/feature/mount_hide.c
 +++ b/kernel/feature/mount_hide.c
 @@ -7,6 +7,7 @@
@@ -20,52 +37,24 @@ index fb795ae..804dd9f 100644
      name = file->f_path.dentry->d_name.name;
      if (!name)
          return false;
-diff --git a/kernel/manager/throne_tracker.c b/kernel/manager/throne_tracker.c
-index cea4da6..85ec08f 100644
---- a/kernel/manager/throne_tracker.c
-+++ b/kernel/manager/throne_tracker.c
-@@ -40,15 +40,14 @@ static int crown_manager(const char *apk, const char *apk_dir, struct list_head
-     struct uid_data *np;
-     bool builtin_present_this_call = false;
-     bool builtin_crowned_this_call = false;
--    char pkg[KSU_MAX_PACKAGE_NAME];
--    const char *builtin_pkg = KSU_PACKAGE_NAME;
-+    char pkg[KSU_MAX_PACKAGE_NAME] = {};
-+
-+    if (get_pkg_from_apk_dir_path(pkg, apk_dir) < 0) {
-+        pr_err("Failed to get package name from apk dir path: %s\n", apk_dir);
-+        return 0;
-+    }
+diff --git a/kernel/ksu_main.c b/kernel/ksu_main.c
+index 44652407..85770f26 100644
+--- a/kernel/ksu_main.c
++++ b/kernel/ksu_main.c
+@@ -80,9 +80,11 @@
+ #include "extension/umount_paths.c"
+ #include "extension/dynamic_manager.c"
+ #include "extension/kpm.c"
++#ifdef CONFIG_KPM
+ #include "extension/kpm/kpm.c"
+ #include "extension/kpm/compact.c"
+ #include "extension/kpm/super_access.c"
++#endif
+ #include "extension/susfs_extension.c"
+ #include "extension/dynamic_sig_fallback.c"
  
-     if (sig_fallback) {
--        if (get_pkg_from_apk_dir_path(pkg, apk_dir) < 0) {
--            pr_err("Failed to get package name from apk dir path: %s\n", apk_dir);
--            return 0;
--        }
--        builtin_pkg = pkg;
- 
-         pr_info("manager pkg: %s\n", pkg);
- 
-@@ -61,7 +60,7 @@ static int crown_manager(const char *apk, const char *apk_dir, struct list_head
-                 break;
-             }
-         }
--    } else {
-+    } else if (!strncmp(pkg, KSU_PACKAGE_NAME, KSU_MAX_PACKAGE_NAME)) {
-         list_for_each_entry (np, list, list) {
-             if (strncmp(np->package, KSU_PACKAGE_NAME, KSU_MAX_PACKAGE_NAME) == 0) {
-                 builtin_present_this_call = true;
-@@ -96,7 +95,7 @@ static int crown_manager(const char *apk, const char *apk_dir, struct list_head
-         return 0;
- 
-     list_for_each_entry (np, list, list) {
--        if (strncmp(np->package, builtin_pkg, KSU_MAX_PACKAGE_NAME) == 0)
-+        if (strncmp(np->package, pkg, KSU_MAX_PACKAGE_NAME) != 0)
-             continue;
-         /*
-          * For dynamic managers the (package, uid) pair must match a
 diff --git a/kernel/policy/feature.c b/kernel/policy/feature.c
-index 05ae163..1d6e447 100644
+index 05ae1636..1d6e447f 100644
 --- a/kernel/policy/feature.c
 +++ b/kernel/policy/feature.c
 @@ -7,7 +7,9 @@ static const char *const feature_names[KSU_FEATURE_MAX] = {
@@ -79,7 +68,7 @@ index 05ae163..1d6e447 100644
      [KSU_FEATURE_MOUNT_HIDE] = "mount_hide",
  };
 diff --git a/kernel/runtime/ksud.c b/kernel/runtime/ksud.c
-index 6e1b528..309cb40 100644
+index ad6c6578..930aa461 100644
 --- a/kernel/runtime/ksud.c
 +++ b/kernel/runtime/ksud.c
 @@ -55,7 +55,9 @@ void on_post_fs_data(void)
@@ -92,20 +81,20 @@ index 6e1b528..309cb40 100644
      // retry forced features which failed at second stage
      ksu_feature_apply_forced();
      ksu_extension_apply_forced();
-@@ -220,7 +222,9 @@ int ksu_handle_execveat_ksud(int *fd, struct filename **filename_ptr,
-             char buf[16];
-             if (check_argv(*argv, 1, "second_stage", buf, sizeof(buf))) {
-                 pr_info("/system/bin/init second_stage executed\n");
+@@ -202,7 +204,9 @@ int ksu_handle_execveat_ksud(int *fd, struct filename **filename_ptr,
+ #ifndef KSU_NO_PREINIT
+                 ksu_preinit_release();
+ #endif
 +#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
                  ksu_selinux_hide_handle_second_stage();
 +#endif
                  apply_kernelsu_rules();
                  cache_sid();
                  setup_ksu_cred();
-@@ -295,7 +299,9 @@ int ksu_handle_execveat_ksud(int *fd, struct filename **filename_ptr, struct use
-         char buf[16];
-         if (!init_second_stage_executed && check_argv(*argv, 1, "second_stage", buf, sizeof(buf))) {
-             pr_info("/system/bin/init second_stage executed\n");
+@@ -280,7 +284,9 @@ int ksu_handle_execveat_ksud(int *fd, struct filename **filename_ptr, struct use
+ #ifndef KSU_NO_PREINIT
+             ksu_preinit_release();
+ #endif
 +#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
              ksu_selinux_hide_handle_second_stage();
 +#endif
@@ -113,7 +102,7 @@ index 6e1b528..309cb40 100644
              cache_sid();
              setup_ksu_cred();
 diff --git a/kernel/selinux/rules.c b/kernel/selinux/rules.c
-index 3d5b86e..9084986 100644
+index 3d5b86e9..9084986a 100644
 --- a/kernel/selinux/rules.c
 +++ b/kernel/selinux/rules.c
 @@ -151,7 +151,9 @@ static int apply_kernelsu_rules_fn(void *ptr)
@@ -137,10 +126,10 @@ index 3d5b86e..9084986 100644
  }
  
 diff --git a/kernel/sulog/event.c b/kernel/sulog/event.c
-index e45f01f..7768000 100644
+index f012421d..2813209e 100644
 --- a/kernel/sulog/event.c
 +++ b/kernel/sulog/event.c
-@@ -374,9 +374,14 @@ static struct ksu_sulog_pending_event *ksu_sulog_capture_grant_root(const struct
+@@ -372,9 +372,14 @@ static struct ksu_sulog_pending_event *ksu_sulog_capture_grant_root(const struct
      struct ksu_sulog_event *event;
  
      // This is actually stupid fix
@@ -155,34 +144,107 @@ index e45f01f..7768000 100644
      if (!pending)
          return NULL;
  
-diff --git a/kernel/ksu.c b/kernel/ksu.c
---- a/kernel/ksu.c
-+++ b/kernel/ksu.c
-@@ -71,9 +71,11 @@
- #include "extension/umount_paths.c"
- #include "extension/dynamic_manager.c"
- #include "extension/kpm.c"
-+#ifdef CONFIG_KPM
- #include "extension/kpm/kpm.c"
- #include "extension/kpm/compact.c"
- #include "extension/kpm/super_access.c"
-+#endif
- #include "extension/susfs_extension.c"
+diff --git a/kernel/Makefile b/kernel/Makefile
+index 8492b9cd..be66ad42 100644
+--- a/kernel/Makefile
++++ b/kernel/Makefile
+@@ -62,26 +62,13 @@ REPO_BRANCH := main
+ VERSION_BASE    := 40000
+ VERSION_OFFSET  := 2815
  
- #include "policy/allowlist.c"
-diff --git a/kernel/extension/cpu_spoof.c b/kernel/extension/cpu_spoof.c
---- a/kernel/extension/cpu_spoof.c
-+++ b/kernel/extension/cpu_spoof.c
-@@ -170,8 +170,12 @@
-                         (struct clocksource **)find_kernel_symbol_exact(
-                             "curr_clocksource");
-                     if (curr_cs_ptr && *curr_cs_ptr) {
-+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 0, 0)
-+                        (*curr_cs_ptr)->archdata.vdso_direct = true;
-+#else
-                         (*curr_cs_ptr)->vdso_clock_mode =
-                             VDSO_CLOCKMODE_ARCHTIMER;
-+#endif
-                     } else {
-                         pr_warn("ksu: set_spoof_cpu failed to resolve 'curr_clocksource'\n");
-                         ++missing;
+-GIT_BIN  := /usr/bin/env PATH="$$PATH":/usr/bin:/usr/local/bin git
+-CURL_BIN := /usr/bin/env PATH="$$PATH":/usr/bin:/usr/local/bin curl
+-
+-KSU_SRC := $(if $(filter $(srctree),$(src)),$(src),$(srctree)/$(src))
+-KSU_SRC := $(if $(wildcard $(KSU_SRC)/../.git),$(KSU_SRC),$(MDIR))
+-
+-git_short_sha    = $(shell cd $(KSU_SRC) && $(GIT_BIN) rev-parse --short=8 HEAD 2>/dev/null)
+-git_branch       = $(shell cd $(KSU_SRC) && $(GIT_BIN) rev-parse --abbrev-ref HEAD 2>/dev/null)
+-git_commit_count = $(shell cd $(KSU_SRC) && $(GIT_BIN) rev-list --count $(REPO_BRANCH) 2>/dev/null)
+-git_latest_tag   = $(shell cd $(KSU_SRC) && $(GIT_BIN) describe --tags --abbrev=0 2>/dev/null | sed 's/^v//')
+-
+-$(shell cd $(KSU_SRC) 2>/dev/null && [ -f ../.git/shallow ] && $(GIT_BIN) fetch --unshallow 2>/dev/null)
+-
+-GITHUB_API_BASE  := https://api.github.com/repos/$(REPO_OWNER)/$(REPO_NAME)
+-KSU_GITHUB_VER   := $(shell $(CURL_BIN) -s "$(GITHUB_API_BASE)/releases/latest" 2>/dev/null | grep '"tag_name":' | sed -E 's/.*"v?([^"]+)".*/\1/')
+-GITHUB_COMMITS   := $(shell $(CURL_BIN) -sI "$(GITHUB_API_BASE)/commits?sha=$(REPO_BRANCH)&per_page=1" 2>/dev/null | grep -i "link:" | sed -n 's/.*page=\([0-9]*\)>; rel="last".*/\1/p')
+-LOCAL_COUNT     := $(if $(GITHUB_COMMITS),$(GITHUB_COMMITS),$(git_commit_count))
+-KSU_VERSION     := $(if $(LOCAL_COUNT),$(shell expr $(VERSION_BASE) + $(LOCAL_COUNT) - $(VERSION_OFFSET)),13000)
+-VERSION_TAG     := $(or $(KSU_GITHUB_VER),$(git_latest_tag),4.2.1)
+-KSU_VERSION_FULL := $(if $(call git_short_sha),v$(VERSION_TAG)-$(call git_short_sha)@$(call git_branch),v$(VERSION_TAG)-$(REPO_NAME)-unknown@unknown)
++# Build metadata is derived from the pinned checkout; no network access at make time.
++GIT_BIN := /usr/bin/env PATH="$$PATH":/usr/bin:/usr/local/bin git
++KSU_SRC := $(KSU_KERNEL_DIR)
++git_short_sha := $(shell cd $(KSU_SRC) && $(GIT_BIN) rev-parse --short=8 HEAD)
++KSU_VERSION ?= 41057
++VERSION_TAG := 4.2.1
++KSU_VERSION_FULL := v$(VERSION_TAG)-$(git_short_sha)@builtin
+ $(info -- $(REPO_NAME) version: $(KSU_VERSION) [$(KSU_VERSION_FULL)])
+ 
+ ccflags-y += -DKSU_VERSION=$(KSU_VERSION)
+diff --git a/kernel/extension/dynamic_sig_fallback.c b/kernel/extension/dynamic_sig_fallback.c
+index 84ff67bd..df15b912 100644
+--- a/kernel/extension/dynamic_sig_fallback.c
++++ b/kernel/extension/dynamic_sig_fallback.c
+@@ -55,12 +55,29 @@ struct fb_path {
+     struct list_head list;
+ };
+ 
++static bool fb_verify_dynamic(const char *apk, const char *apk_dir,
++                              struct list_head *uid_data)
++{
++    struct uid_data *np;
++    char pkg[KSU_MAX_PACKAGE_NAME] = {};
++
++    if (!ksu_manager_enabled() || get_pkg_from_apk_dir_path(pkg, apk_dir) < 0)
++        return false;
++
++    list_for_each_entry (np, uid_data, list) {
++        if (!strncmp(np->package, pkg, KSU_MAX_PACKAGE_NAME))
++            return ksu_dynamic_manager_verify_apk((char *)apk, np->package, np->uid);
++    }
++    return false;
++}
++
+ struct fb_dir_ctx {
+     struct dir_context ctx;
+     struct list_head *path_list;
+     char *parent_dir;
+     int depth;
+     bool matched;
++    struct list_head *uid_data;
+ };
+ 
+ static FILLDIR_RETURN_TYPE fb_actor(struct dir_context *ctx, const char *name, int namelen, loff_t off, u64 ino,
+@@ -83,7 +100,8 @@ static FILLDIR_RETURN_TYPE fb_actor(struct dir_context *ctx, const char *name, i
+     }
+ 
+     if (d_type == DT_REG && namelen == 8 && !memcmp(name, "base.apk", 8)) {
+-        if (!c->matched && is_manager_apk(dirpath))
++        if (!c->matched && (is_manager_apk(dirpath) ||
++                            fb_verify_dynamic(dirpath, c->parent_dir, c->uid_data)))
+             c->matched = true;
+         return FILLDIR_ACTOR_CONTINUE;
+     }
+@@ -143,6 +161,7 @@ static bool fb_crown_by_signature(struct list_head *uid_data)
+                 .parent_dir = pos->dirpath,
+                 .depth = pos->depth,
+                 .matched = false,
++                .uid_data = uid_data,
+             };
+             struct file *file;
+ 
+diff --git a/kernel/kernel_includes.h b/kernel/kernel_includes.h
+index 422fde3d..888b8f1b 100644
+--- a/kernel/kernel_includes.h
++++ b/kernel/kernel_includes.h
+@@ -73,8 +73,7 @@
+ #include <linux/vmalloc.h>
+ #include <linux/tty.h>
+ #include <linux/kref.h>
+-#include <linux/static_call.h>
+-#include "arch.h"
++#include "include/arch.h"
+ #ifdef CONFIG_KSU_SUSFS
+ #include <linux/susfs.h>
+ #include <linux/susfs_def.h>
