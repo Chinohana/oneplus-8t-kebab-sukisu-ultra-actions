@@ -13,11 +13,11 @@
 | 设备 | OnePlus 8T（`kebab`，已测试型号 KB2000） |
 | 系统 | LineageOS 24.0 / Android 17 / API 37 |
 | 内核 | Linux 4.19，LineageOS `lineage-24.0` 分支 |
-| Root | SukiSU Ultra `builtin`，41028 |
+| Root | SukiSU Ultra `builtin`，41057 |
 | SUSFS | v2.3.0，NON-GKI |
 | 编译器 | Android Clang `r563880` |
 
-LineageOS 24.0 版本已于 2026-10-18 完成真机批准并合入主线。四种云端配置均构建通过，已核对手机内核与批准产物的哈希，以及 root、SELinux Enforcing、SUSFS、隐藏开关、存储解密、连接状态和前后相机预览。详细记录见 [24.0 迁移说明](docs/LINEAGE-24-EXPERIMENT.md)。
+2026-10-24 的 41057 版本已完成四种配置的本地编译与验收。完整配置在 KB2000 上核对了 boot Image 哈希、root、SELinux Enforcing、SUSFS、隐藏开关和存储解密；设备持有人确认相机、指纹、网络、音频及文件读写正常。更新与验证记录见[上游同步说明](docs/UPSTREAMS-20261024.md)，安装包见 [GitHub Releases](https://github.com/Chinohana/oneplus-8t-kebab-sukisu-ultra-actions/releases)。
 
 23.2 的最后版本保存在 [archive/lineage-23.2-final](https://github.com/Chinohana/oneplus-8t-kebab-sukisu-ultra-actions/tree/archive/lineage-23.2-final)，旧版测试记录也保留在对应文档中。
 
