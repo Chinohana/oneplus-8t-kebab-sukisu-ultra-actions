@@ -145,7 +145,7 @@ index f012421d..2813209e 100644
          return NULL;
  
 diff --git a/kernel/Makefile b/kernel/Makefile
-index 8492b9cd..be66ad42 100644
+index 8492b9cd..16978c44 100644
 --- a/kernel/Makefile
 +++ b/kernel/Makefile
 @@ -62,26 +62,13 @@ REPO_BRANCH := main
@@ -176,7 +176,7 @@ index 8492b9cd..be66ad42 100644
 +GIT_BIN := /usr/bin/env PATH="$$PATH":/usr/bin:/usr/local/bin git
 +KSU_SRC := $(KSU_KERNEL_DIR)
 +git_short_sha := $(shell cd $(KSU_SRC) && $(GIT_BIN) rev-parse --short=8 HEAD)
-+KSU_VERSION ?= 41057
++KSU_VERSION ?= 41074
 +VERSION_TAG := 4.2.1
 +KSU_VERSION_FULL := v$(VERSION_TAG)-$(git_short_sha)@builtin
  $(info -- $(REPO_NAME) version: $(KSU_VERSION) [$(KSU_VERSION_FULL)])
@@ -248,3 +248,32 @@ index 422fde3d..888b8f1b 100644
  #ifdef CONFIG_KSU_SUSFS
  #include <linux/susfs.h>
  #include <linux/susfs_def.h>
+diff --git a/kernel/manager/pkg_observer.c b/kernel/manager/pkg_observer.c
+index 50ed76a4..2e81a03e 100644
+--- a/kernel/manager/pkg_observer.c
++++ b/kernel/manager/pkg_observer.c
+@@ -31,6 +31,10 @@ static void ksu_defer_track_throne(void)
+ {
+     struct callback_head *cb;
+ 
++#ifdef CONFIG_KSU_SUSFS
++    susfs_parse_priority_app_strings();
++#endif
++
+     if (!(current->flags & PF_KTHREAD)) {
+         cb = kzalloc(sizeof(*cb), GFP_KERNEL);
+         if (cb) {
+diff --git a/kernel/supercall/dispatch.c b/kernel/supercall/dispatch.c
+index e496da2e..ec50b312 100644
+--- a/kernel/supercall/dispatch.c
++++ b/kernel/supercall/dispatch.c
+@@ -471,6 +471,9 @@ int ksu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd, void __user
+             susfs_add_sus_map(arg);
+             return 0;
+ #endif // #ifdef CONFIG_KSU_SUSFS_SUS_MAP
++        case CMD_SUSFS_SET_PRIORITY_UID_FILTER:
++            susfs_set_priority_uid_filter(arg);
++            return 0;
+         case CMD_SUSFS_ENABLE_AVC_LOG_SPOOFING:
+             susfs_set_avc_log_spoofing(arg);
+             return 0;

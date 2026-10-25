@@ -29,6 +29,12 @@ sudo apt install -y bc bison build-essential ccache cpio curl file flex git jq l
 
 ## 参数与预检
 
+### SukiSU 五位版本号
+
+更新依赖时，先比较 SukiSU 最新 Release 的 Manager 与最新成功 Action 的 Manager。Action 含实质 Bug 修复、功能或 UI 更新时，使用该 Action 的五位版本号；只有翻译、文档或构建流程变化时，使用最新 Release 的版本号。读取实际 APK 文件名及构建日志核实数字，并将比较范围、选择依据和源码提交记入当次同步记录。
+
+将结果固定到 `config/build-pins.env` 的 `SUKISU_DRIVER_VERSION` 和兼容补丁中的默认版本号。编译期间不再查询远端版本。Manager 版本选择与 `SUKISU_COMMIT` 分别记录，不能把 Manager 的更新当作 builtin 驱动已同步的证据。
+
 | 参数 | 默认值或用途 |
 | --- | --- |
 | `--enable-susfs`、`--enable-selinux-hide` | `true`，接受 `true` / `false` |

@@ -419,7 +419,7 @@ fi
 echo "SELECTED_OUT=$selected_out" >> "$BUILD_ENV"
 
 git -C kernel_experiment diff --name-only \
-  -- fs include kernel security |
+  -- block fs include kernel security |
   LC_ALL=C sort -u \
   > "$BUILD_TEMP/susfs-kernel-files.after-build"
 if test "$ENABLE_SUSFS" = "true"; then
