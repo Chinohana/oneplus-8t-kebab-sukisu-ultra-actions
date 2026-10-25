@@ -46,6 +46,17 @@ grep -Fq \
 grep -Fq 'err = -ENOMEM;' kernel_experiment/fs/susfs.c
 grep -Fq 'susfs_is_inode_sus_kstat' kernel_experiment/fs/stat.c
 grep -Fq 'susfs_statfs_by_dentry' kernel_experiment/fs/statfs.c
+python3 "$BUILD_ROOT/scripts/test-susfs-priority-filter.py" kernel_experiment/fs/susfs.c
+for file in kernel/sys.c block/ioprio.c; do
+  calls="$(grep -Fc '&& susfs_is_priority_uid_filtered(uid.val)' "kernel_experiment/$file")"
+  test "$calls" -eq 2
+done
+grep -Fq 'case CMD_SUSFS_SET_PRIORITY_UID_FILTER:' \
+  kernel_experiment/KernelSU/kernel/supercall/dispatch.c
+grep -Fq 'susfs_set_priority_uid_filter(arg);' \
+  kernel_experiment/KernelSU/kernel/supercall/dispatch.c
+grep -Fq 'susfs_parse_priority_app_strings();' \
+  kernel_experiment/KernelSU/kernel/manager/pkg_observer.c
 grep -Fq 'susfs_sus_kstat_spoof_proc_fd_seq_show' kernel_experiment/fs/proc/fd.c
 grep -Fq 'susfs_sus_kstat_spoof_inotify_fdinfo' kernel_experiment/fs/notify/fdinfo.c
 grep -Fq \

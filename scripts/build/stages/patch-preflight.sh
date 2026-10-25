@@ -21,6 +21,7 @@ fi
 
 if test "$ENABLE_SUSFS" = "true"; then
   cat > "$BUILD_TEMP/susfs-kernel-files.expected" <<'EOF'
+block/ioprio.c
 fs/Makefile
 fs/exec.c
 fs/namespace.c
@@ -93,10 +94,12 @@ kernel/extension/dynamic_sig_fallback.c
 kernel/feature/mount_hide.c
 kernel/kernel_includes.h
 kernel/ksu_main.c
+kernel/manager/pkg_observer.c
 kernel/policy/feature.c
 kernel/runtime/ksud.c
 kernel/selinux/rules.c
 kernel/sulog/event.c
+kernel/supercall/dispatch.c
 EOF
 sed -i 's/^          //' \
   "$BUILD_TEMP/sukisu-compat-files.expected"

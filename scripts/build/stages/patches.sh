@@ -41,7 +41,7 @@ if test "$ENABLE_SELINUX_HIDE" = "true"; then
 fi
 git -C kernel_experiment diff --check
 git -C kernel_experiment diff --name-only \
-  -- fs include kernel security |
+  -- block fs include kernel security |
   LC_ALL=C sort -u \
   > "$BUILD_TEMP/susfs-kernel-files.actual"
 if test "$ENABLE_SUSFS" = "true"; then
