@@ -28,3 +28,7 @@
 - System.map SHA-256：`b453dabdc13627c032bc92c847172086cc6b54adb3d5dcfc5c0436f5a57da4be`
 
 本次尚未进行真机测试，也未发布版本。新候选使用自己的运行记录和哈希，不能沿用旧产物验收。
+
+## 2026-10-28 发布补记
+
+AnyKernel3 安装脚本修复后，维护者确认修复包的安装、启动及全部真机检查正常。本地验收核对原完整构建和修复包后通过，已发布 [v2026.10.28-ksu41095](https://github.com/Chinohana/oneplus-8t-kebab-sukisu-ultra-actions/releases/tag/v2026.10.28-ksu41095)。修复内容、包哈希及确认方式见[安装修复记录](INSTALLER-FIX-20261028.md)。
