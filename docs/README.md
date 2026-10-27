@@ -21,3 +21,5 @@
 | [LineageOS 24.0 迁移](LINEAGE-24-EXPERIMENT.md) | 平台迁移、真机测试及当时的批准过程 |
 | [2026-10-17 上游记录](UPSTREAMS-20261017.md) | 当日依赖和兼容性检查 |
 | [2026-10-19 上游记录](UPSTREAMS-20261019.md) | SukiSU 41028、SUSFS 同步和适配 |
+
+- [2026-10-27 上游同步与 Manager 41095 选择依据](UPSTREAM-SYNC-20261027.md)
