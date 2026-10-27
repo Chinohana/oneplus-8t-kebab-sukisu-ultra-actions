@@ -4,8 +4,8 @@ set -euo pipefail
 git init susfs_reference
 git -C susfs_reference remote add origin "$SUSFS_REPOSITORY"
 for attempt in 1 2 3; do
-  if git -C susfs_reference fetch --no-tags --depth=1 \
-      origin "$SUSFS_COMMIT"; then
+  if git -C susfs_reference -c http.lowSpeedLimit=1024 -c http.lowSpeedTime=30 fetch --no-tags --depth=1 \
+      "${SUSFS_SEED:-$SUSFS_REPOSITORY}" "$SUSFS_COMMIT"; then
     break
   fi
   if test "$attempt" = 3; then

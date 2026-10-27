@@ -226,6 +226,8 @@ def build(args):
         env['KERNEL_COMMIT'] = kernel
         for name, seed, sha in [('KERNEL_SEED', args.kernel_seed, kernel),
                                 ('SUKISU_SEED', args.sukisu_seed, p['SUKISU_COMMIT']),
+                                ('SUSFS_SEED', args.susfs_seed, p['SUSFS_COMMIT']),
+                                ('ANYKERNEL_SEED', args.anykernel_seed, p['ANYKERNEL_COMMIT']),
                                 ('SM8250_SEED', args.sm8250_seed, p['SM8250_REFERENCE_COMMIT'])]:
             if seed.exists():
                 if subprocess.run(['git', '-C', str(seed), 'cat-file', '-e', sha + '^{commit}'],
@@ -323,6 +325,8 @@ def main():
     parser.add_argument('--export-dir', type=Path)
     parser.add_argument('--kernel-seed', type=Path)
     parser.add_argument('--sukisu-seed', type=Path)
+    parser.add_argument('--susfs-seed', type=Path)
+    parser.add_argument('--anykernel-seed', type=Path)
     parser.add_argument('--sm8250-seed', type=Path)
     parser.add_argument('--jobs', type=int, help='Default: up to 16, bounded by CPU count and available memory')
     parser.add_argument('--minimum-free-gib', type=float, default=0,
@@ -344,6 +348,8 @@ def main():
                 'lto_cache_dir': args.workspace / 'cache/thinlto',
                 'export_dir': args.storage / 'artifacts', 'kernel_seed': args.workspace / 'src/kernel',
                 'sukisu_seed': args.workspace / 'cache/sukisu.git',
+                'susfs_seed': args.workspace / 'cache/susfs.git',
+                'anykernel_seed': args.workspace / 'cache/anykernel.git',
                 'sm8250_seed': args.workspace / 'cache/sm8250-reference.git'}
     for key, default in defaults.items():
         setattr(args, key, (getattr(args, key) or default).resolve())
