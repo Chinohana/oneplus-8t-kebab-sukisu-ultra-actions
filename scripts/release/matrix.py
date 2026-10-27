@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the four acceptance variants locally, preserving each delivery."""
+"""Build the single full-feature local acceptance delivery."""
 import argparse
 import fcntl
 import json
@@ -10,9 +10,6 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[2]
 VARIANTS = {
-    'sukisu-only': ('false', 'smoke', 'false'),
-    'selinux-hide': ('false', 'smoke', 'true'),
-    'susfs-extended-stat': ('true', 'extended-stat', 'false'),
     'current-extended-full-hide': ('true', 'extended-full', 'true'),
 }
 
