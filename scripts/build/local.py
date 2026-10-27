@@ -19,6 +19,15 @@ ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_STORAGE = Path(os.environ.get('BUILD_STORAGE', str(Path.home() / 'oneplus8t-build')))
 
 
+def automatic_jobs(cpu_count=None, available_bytes=None):
+    if cpu_count is None:
+        cpu_count = os.cpu_count() or 1
+    if available_bytes is None:
+        memory = dict(line.split(':', 1) for line in Path('/proc/meminfo').read_text().splitlines())
+        available_bytes = int(memory['MemAvailable'].split()[0]) * 1024
+    return max(1, min(16, cpu_count, available_bytes // (768 * 1024**2)))
+
+
 def run(*args, **kwargs):
     return subprocess.check_output(args, text=True, **kwargs).strip()
 
@@ -115,6 +124,13 @@ def preflight(args):
     check_space((args.workspace, args.storage, args.export_dir), args.minimum_free_gib)
     if args.jobs < 1:
         raise ValueError('jobs must be positive')
+    if getattr(args, 'use_incremental', 'false') == 'true':
+        for path in (args.object_cache_dir, args.lto_cache_dir):
+            ancestor = path
+            while not ancestor.exists():
+                ancestor = ancestor.parent
+            if run('findmnt', '-n', '-T', str(ancestor), '-o', 'FSTYPE') != 'ext4':
+                raise ValueError('Incremental object and ThinLTO caches must be on ext4')
     return p
 
 
@@ -186,9 +202,13 @@ def build(args):
                'EXECUTION_ENVIRONMENT': 'local-wsl2', 'ENABLE_SUSFS': args.enable_susfs,
                'ENABLE_SELINUX_HIDE': args.enable_selinux_hide, 'USE_ANYKERNEL': args.use_anykernel,
                'USE_CCACHE': args.use_ccache, 'SUSFS_PROFILE': args.profile, 'BUILD_JOBS': str(args.jobs),
-               'ANDROID_NDK_ROOT': str(args.ndk)}
+               'ANDROID_NDK_ROOT': str(args.ndk), 'USE_INCREMENTAL': args.use_incremental,
+               'BUILD_OBJECT_CACHE': str(args.object_cache_dir),
+               'BUILD_LTO_CACHE': str(args.lto_cache_dir)}
         # Actions variables from a parent shell must not change local execution.
         env = {k: v for k, v in env.items() if not k.startswith('GITHUB_')}
+        for name in ('INCREMENTAL_ACTIVE', 'COMPILE_TREE', 'COMPILE_OUT', 'BUILD_LD', 'REAL_LD', 'THINLTO_CACHE_DIR'):
+            env.pop(name, None)
         pinned = run('bash', str(target / '.github/scripts/resolve-kernel-pin.sh'), str(target), env=env)
         kernel = pinned.splitlines()[-1]
         env['BASE_KERNEL_COMMIT'] = kernel
@@ -297,11 +317,14 @@ def main():
     parser.add_argument('--clang', type=Path)
     parser.add_argument('--ndk', type=Path)
     parser.add_argument('--cache-dir', type=Path)
+    parser.add_argument('--object-cache-dir', type=Path)
+    parser.add_argument('--lto-cache-dir', type=Path)
+    parser.add_argument('--use-incremental', choices=['true', 'false'], default='true')
     parser.add_argument('--export-dir', type=Path)
     parser.add_argument('--kernel-seed', type=Path)
     parser.add_argument('--sukisu-seed', type=Path)
     parser.add_argument('--sm8250-seed', type=Path)
-    parser.add_argument('--jobs', type=int, default=8)
+    parser.add_argument('--jobs', type=int, help='Default: up to 16, bounded by CPU count and available memory')
     parser.add_argument('--minimum-free-gib', type=float, default=0,
                         help='Optional free-space threshold in GiB; default: no threshold')
     parser.add_argument('--profile', choices=['extended-full'], default='extended-full')
@@ -311,10 +334,14 @@ def main():
     parser.add_argument('--check-only', action='store_true')
     parser.add_argument('--export-run', type=Path, help='Retry export of a completed run without rebuilding')
     args = parser.parse_args()
+    if args.jobs is None:
+        args.jobs = automatic_jobs()
     p = pins(ROOT)
     defaults = {'clang': args.workspace / 'toolchains' / p['CLANG_REVISION'],
                 'ndk': args.workspace / 'toolchains/android-ndk-r27c',
                 'cache_dir': args.workspace / 'cache/pipeline-ccache',
+                'object_cache_dir': args.workspace / 'cache/compile-objects',
+                'lto_cache_dir': args.workspace / 'cache/thinlto',
                 'export_dir': args.storage / 'artifacts', 'kernel_seed': args.workspace / 'src/kernel',
                 'sukisu_seed': args.workspace / 'cache/sukisu.git',
                 'sm8250_seed': args.workspace / 'cache/sm8250-reference.git'}

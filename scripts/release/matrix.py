@@ -18,12 +18,14 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--workspace', type=Path, default=Path.home() / 'oneplus8t-kernel')
     parser.add_argument('--storage', type=Path, default=Path(os.environ.get('BUILD_STORAGE', str(Path.home() / 'oneplus8t-build'))))
-    parser.add_argument('--jobs', type=int, default=8)
+    parser.add_argument('--jobs', type=int, help='Override the local builder automatic parallelism')
     parser.add_argument('--output', type=Path)
     parser.add_argument('--check-only', action='store_true')
     args = parser.parse_args()
     builder = ROOT / 'scripts/build/local.py'
-    common = ['--workspace', str(args.workspace), '--storage', str(args.storage), '--jobs', str(args.jobs)]
+    common = ['--workspace', str(args.workspace), '--storage', str(args.storage)]
+    if args.jobs is not None:
+        common += ['--jobs', str(args.jobs)]
     if args.check_only:
         subprocess.run([sys.executable, str(builder), *common, '--check-only'], check=True)
         print('Local matrix: ' + ', '.join(VARIANTS))

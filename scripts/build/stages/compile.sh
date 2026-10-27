@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
-export PATH="$BUILD_ROOT/toolchains/clang/bin:$PATH"
+if test "${EXECUTION_ENVIRONMENT:-}" = local-wsl2 && \
+   test "${USE_INCREMENTAL:-true}" = true && \
+   test "${INCREMENTAL_ACTIVE:-false}" != true; then
+  exec python3 "$BUILD_ROOT/scripts/build/incremental.py"
+fi
+clang_root="$(readlink -f "$BUILD_ROOT/toolchains/clang" || printf '%s' "$BUILD_ROOT/toolchains/clang")"
+export PATH="$clang_root/bin:$PATH"
 export KBUILD_BUILD_USER=github-actions
 export KBUILD_BUILD_HOST=github
 SOURCE_DATE_EPOCH="$(
@@ -15,7 +21,9 @@ build_kernel() {
   local log="$3"
   local ccache_stage="$4"
 
-  cd "$BUILD_ROOT/$tree"
+  cd "$tree"
+  local linker_args=()
+  if test -n "${BUILD_LD:-}"; then linker_args=("LD=$BUILD_LD"); fi
   set +e
   if test "$USE_CCACHE" = "true"; then
     CCACHE_DIR="$BUILD_ROOT/.ccache/$ccache_stage" \
@@ -23,13 +31,13 @@ build_kernel() {
       LLVM=1 LLVM_IAS=1 \
       CC="ccache clang" \
       KSU_VERSION="$SUKISU_DRIVER_VERSION" \
-      KCFLAGS="-Wno-error" Image 2>&1 |
+      KCFLAGS="-Wno-error" "${linker_args[@]}" Image 2>&1 |
       tee "$BUILD_ROOT/$log"
   else
     make -j"${BUILD_JOBS:-$(nproc --all)}" O="$out" ARCH=arm64 \
       LLVM=1 LLVM_IAS=1 \
       KSU_VERSION="$SUKISU_DRIVER_VERSION" \
-      KCFLAGS="-Wno-error" Image 2>&1 |
+      KCFLAGS="-Wno-error" "${linker_args[@]}" Image 2>&1 |
       tee "$BUILD_ROOT/$log"
   fi
   local build_status="${PIPESTATUS[0]}"
@@ -42,4 +50,4 @@ build_kernel() {
 }
 
 # Compile exactly the selected configuration. No baseline or intermediate Image.
-build_kernel kernel_experiment "$SELECTED_OUT" audit/build-selected.log "selected-$PROFILE-$CCACHE_HIDE_TAG"
+build_kernel "${COMPILE_TREE:-$BUILD_ROOT/kernel_experiment}" "${COMPILE_OUT:-$SELECTED_OUT}" audit/build-selected.log "selected-$PROFILE-$CCACHE_HIDE_TAG"

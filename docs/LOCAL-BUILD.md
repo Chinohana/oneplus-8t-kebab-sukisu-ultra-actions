@@ -18,7 +18,7 @@ python3 scripts/build/local.py
 
 后续构建可将示例分支替换为已审查的分支或提交。每次运行会创建独立检出，运行中的脚本不受外部入口文件修改影响。源码、补丁和工具链版本来自该提交的 pins。
 
-默认构建固定内核提交、SUSFS `extended-full`、SELinux hide 和 AnyKernel3 ZIP，并启用 ccache，使用 8 个并行任务。Ubuntu 构建依赖：
+默认构建固定内核提交、SUSFS `extended-full`、SELinux hide 和 AnyKernel3 ZIP，并启用增量对象、ccache 与 ThinLTO 缓存。并行度按可用 CPU 和内存选择，最多 16；`--jobs` 可覆盖。Ubuntu 构建依赖：
 
 ```bash
 sudo apt update
@@ -41,16 +41,26 @@ sudo apt install -y bc bison build-essential ccache cpio curl file flex git jq l
 | `--profile` | 固定为 `extended-full` |
 | `--use-anykernel`、`--use-ccache` | 安装包固定 `true`；ccache 默认 `true`，可关闭缓存 |
 | `--kernel-source` | `approved-pin`；`latest-lineage-24.0` 核验继承关系后构建未批准候选 |
-| `--jobs` | `8` |
+| `--jobs` | 自动选择：不超过 16、可用 CPU 数及每任务 768 MiB 的可用内存预算 |
 | `--workspace` | `~/oneplus8t-kernel`，必须位于 ext4 |
 | `--storage`、`--export-dir` | 编译库根目录、产物导出目录 |
 | `--clang`、`--ndk` | 指定已安装的 Linux 工具链 |
 | `--cache-dir` | 指定持久编译缓存目录 |
+| `--object-cache-dir`、`--lto-cache-dir` | 指定增量对象和 ThinLTO 缓存，默认在工作区的 `cache/compile-objects`、`cache/thinlto` |
+| `--use-incremental` | 默认 `true`；`false` 在本次独立检出中重新生成对象，仍可使用 ccache |
 | `--kernel-seed`、`--sukisu-seed`、`--sm8250-seed` | 可选的本地 Git 对象种子；命中固定提交时使用 |
 | `--check-only` | 只检查环境，不创建运行目录或启动编译 |
 | `--minimum-free-gib` | 默认 `0`，不设置启动容量门槛；可按需指定非负 GiB 数值 |
 
-预检不再要求剩余空间达到 50 GiB。只有显式指定 `--minimum-free-gib` 时，才按该值检查 Linux 工作区、编译库和导出位置。WSL 中显示的虚拟磁盘容量不能代替宿主存储剩余空间。并行度先保持 `8`，再根据实际内存和耗时调整。
+预检不再要求剩余空间达到 50 GiB。只有显式指定 `--minimum-free-gib` 时，才按该值检查 Linux 工作区、编译库和导出位置。WSL 中显示的虚拟磁盘容量不能代替宿主存储剩余空间。内存预算用于选择启动并行度，不是运行时内存上限；可用 `--jobs` 降低并行度。
+
+### 重复构建的缓存
+
+每次运行仍建立独立源码快照。实际编译在受管理的 ext4 对象工作区完成，按文件内容同步源码：内容相同就保留时间戳，修改和删除的文件正常同步，编译对象由 Kbuild 的依赖检查决定是否重用。配置、基础内核提交或实际 Clang/LLD 二进制变化时，使用不同工作区。成功后，将 Image、配置、System.map 和 vmlinux 复制回本次运行目录，旧运行和证据不作修改。
+
+每个选定配置的 ccache 上限从 800 MB 调为 4 GB；ThinLTO 缓存上限为 8 GB，只作用于原有 vmlinux.o 的 ThinLTO 链接。保留 CFI、ThinLTO、调试信息和完整功能配置。缓存首次填充仍需编译，不能把无修改检查的耗时当作首次全量构建耗时。
+
+`audit/incremental-build.json` 记录对象工作区标识、是否已有 vmlinux、make 耗时和 Image 哈希。对象工作区是可更新缓存，不作为发布证据；发布仍以本次运行的精确源码快照、产物哈希和实际真机记录为准。不要手工编辑对象缓存中的源码，也不要把历史 `runs/` 当作可变增量工作区。
 
 ## 日志、交付和重试
 
