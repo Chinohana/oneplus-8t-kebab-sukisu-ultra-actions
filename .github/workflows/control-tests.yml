@@ -21,3 +21,5 @@ jobs:
         run: python3 scripts/test-local-build.py
       - name: Test local acceptance and phone-test evidence
         run: python3 scripts/test-local-release.py
+      - name: Test single-configuration compilation policy
+        run: python3 scripts/test-selected-build.py

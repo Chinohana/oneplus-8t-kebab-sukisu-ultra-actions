@@ -1,6 +1,6 @@
 # 本地构建
 
-内核构建、配置矩阵、验收和发布全部在本地完成。GitHub 只保存代码、历史记录和轻量检查。日常试编译在本地 Ubuntu 24.04 中运行；正式发布还需要本地矩阵及实际产物的真机测试。
+维护者的内核构建、验收和发布全部在本地完成。GitHub 主仓库保存代码、历史记录和轻量检查。本地 Ubuntu 24.04 只编译完整功能版；正式发布需要该产物的审计和实际真机测试。
 
 源码、工具链和编译缓存放在 Linux ext4 文件系统中，默认工作目录为 `~/oneplus8t-kernel`。交付物默认导出到 `~/oneplus8t-build/artifacts`，也可通过 `--storage` 和 `--export-dir` 指定其他位置。
 
@@ -37,9 +37,9 @@ sudo apt install -y bc bison build-essential ccache cpio curl file flex git jq l
 
 | 参数 | 默认值或用途 |
 | --- | --- |
-| `--enable-susfs`、`--enable-selinux-hide` | `true`，接受 `true` / `false` |
-| `--profile` | `extended-full`；也支持 `smoke`、`minimal-mount`、`extended-stat` |
-| `--use-anykernel`、`--use-ccache` | `true`，接受 `true` / `false` |
+| `--enable-susfs`、`--enable-selinux-hide` | 固定为 `true` |
+| `--profile` | 固定为 `extended-full` |
+| `--use-anykernel`、`--use-ccache` | 安装包固定 `true`；ccache 默认 `true`，可关闭缓存 |
 | `--kernel-source` | `approved-pin`；`latest-lineage-24.0` 核验继承关系后构建未批准候选 |
 | `--jobs` | `8` |
 | `--workspace` | `~/oneplus8t-kernel`，必须位于 ext4 |
@@ -68,44 +68,43 @@ python3 scripts/build/local.py --export-run ~/oneplus8t-kernel/runs/<运行编�
 
 交付包含内核包或原始 Image、配置、System.map、审计记录和 provenance；启用 SUSFS 时另带用户态工具。provenance 记录真实的本地运行编号，不生成 GitHub run ID。编译产物先按未批准候选处理；本地验收通过后才进入发布目录。
 
-## 本地矩阵与验收
+## 单一完整配置与验收
 
-日常修改只编译需要的配置。准备发布时，在干净的构建提交上执行四组合矩阵：
+从 2026-10-27 起，维护者一律只编译和发布完整功能版。默认命令只配置、编译一个 `extended-full + SELinux hide` Image，不再编译基线、smoke、minimal-mount 或其他验收组合。SUSFS 的全部现有子选项编译为 `y`，KPM 和 kprobes 继续关闭；运行时规则和隐藏开关按实际需要设置。
 
-```bash
-python3 scripts/release/matrix.py --check-only
-python3 scripts/release/matrix.py --output ~/oneplus8t-kernel/audit/matrix-<版本>.json
-```
+产物审计保留配置、必需符号、未解析符号、链接错误、源码变更白名单和哈希检查。编译警告与 Image 大小记录在审计目录；本次没有另编基线，不再生成跨配置的警告、符号或体积增长比较。
 
-矩阵按顺序构建纯 SukiSU、SELinux hide、SUSFS extended-stat 和 extended-full + hide，共享本地 ccache。每个组合保存独立交付；任何一个失败，矩阵都不能用于验收。矩阵文件只引用已完成的本地产物，不能用云端结果替代。
-
-完整配置产物通过实际手机测试后，先生成对应的记录表：
+完整配置产物通过实际手机测试后，先生成对应记录：
 
 ```bash
 python3 scripts/release/local.py phone-template --artifacts <完整配置交付目录> --output <真机记录.json>
 ```
 
-模板预填构建提交、运行编号、安装包和 Image 哈希，所有检查项默认为 `false`。由测试者填写姓名、带时区的测试时间，并按实际结果逐项确认启动、ADB、root、SELinux Enforcing、SUSFS、SELinux hide、存储解密、Wi-Fi、移动网络、前后相机、指纹、音频、文件读写及内核日志。生成模板不代表已经测试，也不会操作手机。
+模板预填构建提交、运行编号、安装包和 Image 哈希，所有检查项默认 `false`。测试者填写姓名、带时区的时间，并按实际结果确认启动、ADB、root、SELinux Enforcing、SUSFS、SELinux hide、存储解密、Wi-Fi、移动网络、前后相机、指纹、音频、文件读写和内核日志。生成模板不代表已经测试，也不会操作手机。
 
-使用构建时保存的精确检出完成验收：
+使用构建时保存的精确检出验收：
 
 ```bash
-python3 scripts/release/local.py accept --candidate <完整配置运行目录> --artifacts <完整配置交付目录> --matrix <矩阵.json> --phone-test <真机记录.json> --output <验收.json>
+python3 scripts/release/local.py accept --candidate <完整配置运行目录> --artifacts <完整配置交付目录> --phone-test <真机记录.json> --output <验收.json>
 ```
 
-验收工具重新计算各组合的指纹，核对 Git 提交、pins、完整审计阶段、交付哈希和真机记录。完整配置包必须是矩阵中的同一个包。缺少组合、未完成的测试项、被改写的产物或不匹配的提交都会使验收失败。验收记录只写入本地，不依赖 Actions run、bot 评论或 GitHub 的审批工作流。
+验收重新计算输入指纹，核对精确 Git 提交、pins、完整功能配置、阶段结果、交付哈希和真机记录。缺失配置项、未确认测试项、产物被改写或提交不匹配都会使验收失败。新流程无需 `--matrix`；旧参数仍可用于核对记录中同一个完整配置包。`scripts/release/matrix.py` 兼容入口也只构建一个完整配置，不会补编旧四组合。
 
 ## 生成发布目录
 
 ```bash
-python3 scripts/release/local.py stage --candidate <完整配置运行目录> --artifacts <完整配置交付目录> --matrix <矩阵.json> --phone-test <真机记录.json> --acceptance <验收.json> --output <版本发布目录>
+python3 scripts/release/local.py stage --candidate <完整配置运行目录> --artifacts <完整配置交付目录> --phone-test <真机记录.json> --acceptance <验收.json> --output <版本发布目录>
 ```
 
-生成发布目录前会再次核验全部证据，并确认验收记录仍与当前文件一致。目录包含安装包、SUSFS 用户态工具、配置、System.map、来源记录、本地验收及真机记录、去除本地路径的矩阵摘要和 `SHA256SUMS`。通过 `.partial` 临时目录校验后才转为正式目录，已有目录不会被覆盖。
+发布前再次核验全部证据。目录包含一个完整功能安装包、SUSFS 工具、配置、System.map、来源记录、本地验收、真机记录、完整配置摘要与 `SHA256SUMS`。摘要沿用 `matrix-summary.json` 文件名，只记录这一个配置。通过 `.partial` 目录校验后再转为正式目录，已有目录不会被覆盖。
 
-该目录就是本地版本交付。将来如需上传到 GitHub Releases，可以从本地上传已验收文件；上传不再触发云端编译或复验。当前命令不会上传、创建 tag 或操作手机。
+上传 GitHub Releases 时默认也只提供这个完整功能版。单独提供安装 ZIP 和校验清单，可另附完整交付归档；归档包含同一套产物，不是另一种配置。tag 指向实际 builder commit，说明附件用途和实际完成的验证。`stage` 不会上传、创建 tag 或操作手机；发布决定不能补写真机结果。
 
-原 Actions 编译、云端审批和构建结果通知入口已停用。PR 的 `kernel-candidate-gate` 与 `kernel-runtime-policy` 保留原检查名称，输出本地验收说明，不能作为任何产物的验收凭据。
+## 需要特定配置时
+
+需要不同功能组合，可克隆后推送到自己的 GitHub 仓库，或直接 Fork，使用手动 GitHub Actions。操作与参数见[自定义构建](CUSTOM-BUILD.md)。主仓库继续使用本地完整配置维护，自定义工作流只在使用者自己的仓库编译一个选定配置，产物是待自行验证的候选。
+
+历史云端审批工作流仍停用。PR 的 `kernel-candidate-gate`、`kernel-runtime-policy` 和控制脚本检查不能代替本地产物验收或真机测试。
 
 ## 容量检查
 

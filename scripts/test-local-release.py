@@ -51,7 +51,7 @@ class PhoneEvidence(unittest.TestCase):
             with self.assertRaises(ValueError):
                 release.check_phone({**self.phone, 'tested_at': when}, self.build)
 
-    def test_all_local_variants_required(self):
+    def test_optional_record_requires_the_same_full_delivery(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             matrix = root / 'matrix.json'
@@ -64,10 +64,33 @@ class PhoneEvidence(unittest.TestCase):
             args = SimpleNamespace(artifacts=root, candidate=root, matrix=matrix, phone_test=phone)
             with patch.object(release, 'check_run', return_value=self.build):
                 self.assertTrue(release.accept(args)['phone_tested'])
-                record['variants'].pop('selinux-hide')
+                record['variants'].pop('current-extended-full-hide')
                 matrix.write_text(json.dumps(record))
                 with self.assertRaises(KeyError):
                     release.accept(args)
+
+    def test_full_delivery_and_phone_evidence_need_no_matrix(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            phone = root / 'phone.json'
+            phone.write_text(json.dumps(self.phone))
+            args = SimpleNamespace(artifacts=root, candidate=root, matrix=None, phone_test=phone)
+            with patch.object(release, 'check_run', return_value=self.build):
+                record = release.accept(args)
+            self.assertTrue(record['phone_tested'])
+            self.assertEqual(list(record['variants']), ['current-extended-full-hide'])
+            self.assertIsNone(record['matrix_evidence_sha256'])
+
+    def test_reduced_configuration_cannot_be_released(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / 'kernel').mkdir()
+            (root / 'kernel/selected.config').write_text('CONFIG_KSU=y\nCONFIG_KSU_SUSFS=y\n')
+            with patch.object(release.artifacts, 'verify', return_value={}):
+                with self.assertRaisesRegex(ValueError, 'full-feature configuration'):
+                    release.check_run(root, root, 'false', 'smoke', 'false')
+                with self.assertRaisesRegex(ValueError, 'configuration is incomplete'):
+                    release.check_run(root, root, 'true', 'extended-full', 'true')
 
     def test_cloud_matrix_does_not_count_as_local_acceptance(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -105,6 +128,8 @@ class PhoneEvidence(unittest.TestCase):
                 config += 'CONFIG_KSU_SUSFS=y\n'
             if hide == 'true':
                 config += 'CONFIG_KSU_SELINUX_HIDE_4_19=y\n'
+            config += ''.join(f'CONFIG_{option}=y\n' for option in release.FULL_OPTIONS
+                              if f'CONFIG_{option}=y\n' not in config)
             (kernel / 'selected.config').write_text(config)
             (kernel / 'selected.System.map').write_text('test symbol\n')
             image = bytes(56) + b'ARM\x64' + bytes(4)
@@ -139,14 +164,14 @@ class PhoneEvidence(unittest.TestCase):
         matrix = candidate.parent / 'matrix.json'
         matrix.write_text(json.dumps({'result': 'passed', 'execution_environment': 'local-wsl2',
                                       'builder_commit': head, 'variants': deliveries}))
-        args = SimpleNamespace(artifacts=full, candidate=candidate, matrix=matrix, phone_test=phone)
+        args = SimpleNamespace(artifacts=full, candidate=candidate, matrix=None, phone_test=phone)
         accepted = release.accept(args)
         self.assertTrue(accepted['phone_tested'])
         acceptance = candidate.parent / 'acceptance.json'
         release.write_new(acceptance, accepted)
         output = candidate.parent / 'release-output'
         command = ['local.py', 'stage', '--candidate', str(candidate), '--artifacts', str(full),
-                   '--matrix', str(matrix), '--phone-test', str(phone), '--acceptance', str(acceptance), '--output', str(output)]
+                   '--phone-test', str(phone), '--acceptance', str(acceptance), '--output', str(output)]
         with patch.object(sys, 'argv', command):
             release.main()
         for line in (output / 'SHA256SUMS').read_text().splitlines():
@@ -158,12 +183,14 @@ class PhoneEvidence(unittest.TestCase):
             release.accept(args)
 
 
-class LocalOnlyPolicy(unittest.TestCase):
-    def test_cloud_build_and_approval_are_retired(self):
+class MaintainedBuildPolicy(unittest.TestCase):
+    def test_custom_action_is_manual_and_kept_out_of_the_maintained_repository(self):
         workflow = ROOT / '.github/workflows'
         build = (workflow / 'build-sukisu-ultra.yml').read_text()
         for trigger in ('  push:', '  pull_request:', '  workflow_call:'):
             self.assertNotIn(trigger, build)
+        self.assertIn("if: github.repository != 'Chinohana/oneplus-8t-kebab-sukisu-ultra-actions'", build)
+        self.assertIn('run: bash scripts/build/custom-action.sh', build)
         for file in workflow.glob('*.yml'):
             text = file.read_text()
             self.assertNotIn('uses: ./.github/workflows/build-sukisu-ultra.yml', text)

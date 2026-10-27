@@ -1,20 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-stages=(baseline)
-if test "$ENABLE_SUSFS" = "true"; then
-  stages+=("smoke-$CCACHE_HIDE_TAG")
-  if test "$PROFILE" != smoke; then
-    stages+=("minimal-mount-$CCACHE_HIDE_TAG")
-  fi
-  if test "$PROFILE" = extended-stat; then
-    stages+=("extended-stat-$CCACHE_HIDE_TAG")
-  fi
-  if test "$PROFILE" = extended-full; then
-    stages+=("extended-full-$CCACHE_HIDE_TAG")
-  fi
-else
-  stages+=("selected-$CCACHE_HIDE_TAG")
-fi
+stages=("selected-$PROFILE-$CCACHE_HIDE_TAG")
 
 mkdir -p audit
 printf '%s\n' "${stages[@]}" > audit/ccache-stages.txt
