@@ -23,3 +23,10 @@ jobs:
         run: python3 scripts/test-local-release.py
       - name: Test single-configuration compilation policy
         run: python3 scripts/test-selected-build.py
+      - name: Test incremental source and object cache isolation
+        run: |
+          if ! command -v rsync >/dev/null; then
+            sudo apt-get update
+            sudo apt-get install -y rsync
+          fi
+          python3 scripts/test-incremental-build.py

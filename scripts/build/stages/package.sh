@@ -4,7 +4,7 @@ set -euo pipefail
 git init AnyKernel3
 git -C AnyKernel3 remote add origin "$ANYKERNEL_REPOSITORY"
 git -C AnyKernel3 fetch --no-tags --depth=1 \
-  origin "$ANYKERNEL_COMMIT"
+  "${ANYKERNEL_SEED:-$ANYKERNEL_REPOSITORY}" "$ANYKERNEL_COMMIT"
 git -C AnyKernel3 checkout --detach "$ANYKERNEL_COMMIT"
 test "$(git -C AnyKernel3 rev-parse HEAD)" = "$ANYKERNEL_COMMIT"
 rm -rf AnyKernel3/.git
