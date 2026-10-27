@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Repair an existing candidate's installer without changing its kernel payload."""
 import argparse
+import copy
 import hashlib
 import json
 from pathlib import Path
@@ -54,7 +55,7 @@ def main():
             with zipfile.ZipFile(temporary, 'x') as repaired:
                 repaired.comment = original.comment
                 for entry in original.infolist():
-                    repaired.writestr(entry, core.read_bytes() if entry.filename == core_name
+                    repaired.writestr(copy.copy(entry), core.read_bytes() if entry.filename == core_name
                                       else original.read(entry.filename))
         with zipfile.ZipFile(temporary) as repaired:
             assert original.namelist() == repaired.namelist()
