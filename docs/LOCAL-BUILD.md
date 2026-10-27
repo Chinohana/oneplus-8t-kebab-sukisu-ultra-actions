@@ -48,7 +48,7 @@ sudo apt install -y bc bison build-essential ccache cpio curl file flex git jq l
 | `--cache-dir` | 指定持久编译缓存目录 |
 | `--object-cache-dir`、`--lto-cache-dir` | 指定增量对象和 ThinLTO 缓存，默认在工作区的 `cache/compile-objects`、`cache/thinlto` |
 | `--use-incremental` | 默认 `true`；`false` 在本次独立检出中重新生成对象，仍可使用 ccache |
-| `--kernel-seed`、`--sukisu-seed`、`--sm8250-seed` | 可选的本地 Git 对象种子；命中固定提交时使用 |
+| `--kernel-seed`、`--sukisu-seed`、`--susfs-seed`、`--anykernel-seed`、`--sm8250-seed` | 可选的本地 Git 对象种子；命中固定提交时使用 |
 | `--check-only` | 只检查环境，不创建运行目录或启动编译 |
 | `--minimum-free-gib` | 默认 `0`，不设置启动容量门槛；可按需指定非负 GiB 数值 |
 
@@ -61,6 +61,8 @@ sudo apt install -y bc bison build-essential ccache cpio curl file flex git jq l
 每个选定配置的 ccache 上限从 800 MB 调为 4 GB；ThinLTO 缓存上限为 8 GB，只作用于原有 vmlinux.o 的 ThinLTO 链接。保留 CFI、ThinLTO、调试信息和完整功能配置。缓存首次填充仍需编译，不能把无修改检查的耗时当作首次全量构建耗时。
 
 `audit/incremental-build.json` 记录对象工作区标识、是否已有 vmlinux、make 耗时和 Image 哈希。对象工作区是可更新缓存，不作为发布证据；发布仍以本次运行的精确源码快照、产物哈希和实际真机记录为准。不要手工编辑对象缓存中的源码，也不要把历史 `runs/` 当作可变增量工作区。
+
+SUSFS 和 AnyKernel3 的默认种子为 `cache/susfs.git`、`cache/anykernel.git`；已有基线对象也直接本地核验。种子只在确实包含所需固定提交时使用，取回后仍校验精确提交及内容。缺少种子时回到对应上游，不因命中缓存而跳过审核。原因、实测耗时及比较边界见[本地编译性能记录](BUILD-PERFORMANCE-20261027.md)。
 
 ## 日志、交付和重试
 

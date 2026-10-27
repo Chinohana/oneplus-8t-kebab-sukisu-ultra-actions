@@ -7,6 +7,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -23,6 +24,55 @@ local = load('builder', 'scripts/build/local.py')
 
 
 class IncrementalBuild(unittest.TestCase):
+    def fixture(self, root, status):
+        source = root / 'kernel_experiment'
+        for tree in (source, source / 'KernelSU'):
+            tree.mkdir(parents=True, exist_ok=True)
+            subprocess.run(['git', 'init', str(tree)], check=True, capture_output=True)
+            (tree / 'source.c').write_text('int original;\n')
+            subprocess.run(['git', '-C', str(tree), 'add', 'source.c'], check=True)
+            subprocess.run(['git', '-C', str(tree), '-c', 'user.name=test', '-c', 'user.email=test@localhost',
+                            'commit', '-m', 'test'], check=True, capture_output=True)
+        (source / 'out-extended-full').mkdir()
+        (source / 'out-extended-full/.config').write_text('CONFIG_KSU=y\n')
+        (root / 'audit').mkdir()
+        (root / 'toolchains/clang/bin').mkdir(parents=True)
+        for name in ('clang', 'ld.lld'):
+            (root / 'toolchains/clang/bin' / name).write_text(name)
+        (root / 'scripts/build/stages').mkdir(parents=True)
+        (root / 'scripts/build/ld-cache.sh').write_bytes((ROOT / 'scripts/build/ld-cache.sh').read_bytes())
+        (root / 'scripts/build/stages/compile.sh').write_text('''
+set -eu
+out="$COMPILE_TREE/$COMPILE_OUT"
+mkdir -p "$out/arch/arm64/boot"
+for file in vmlinux System.map arch/arm64/boot/Image; do printf verified > "$out/$file"; done
+exit ''' + str(status) + '\n')
+        return {'BUILD_ROOT': str(root), 'SELECTED_OUT': 'out-extended-full', 'KERNEL_COMMIT': 'test',
+                'BUILD_OBJECT_CACHE': str(root / 'objects'), 'BUILD_LTO_CACHE': str(root / 'lto')}
+
+    def test_success_snapshots_outputs_without_moving_the_run_source(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            with patch.dict(os.environ, self.fixture(root, 0)):
+                incremental.main()
+            report = json.loads((root / 'audit/incremental-build.json').read_text())
+            self.assertEqual(report['result'], 'passed')
+            self.assertFalse(report['warm_workspace'])
+            image = root / 'kernel_experiment/out-extended-full/arch/arm64/boot/Image'
+            self.assertEqual(image.read_text(), 'verified')
+            self.assertFalse(image.is_symlink())
+            self.assertEqual((root / 'kernel_experiment/source.c').read_text(), 'int original;\n')
+
+    def test_failed_compile_never_publishes_cached_outputs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            with patch.dict(os.environ, self.fixture(root, 7)):
+                with self.assertRaises(SystemExit) as result:
+                    incremental.main()
+            self.assertEqual(result.exception.code, 7)
+            self.assertFalse((root / 'kernel_experiment/out-extended-full/arch/arm64/boot/Image').exists())
+            self.assertEqual(json.loads((root / 'audit/incremental-build.json').read_text())['result'], 'failed')
+
     def test_jobs_respect_cpu_memory_and_cap(self):
         gib = 1024**3
         self.assertEqual(local.automatic_jobs(20, 14 * gib), 16)
