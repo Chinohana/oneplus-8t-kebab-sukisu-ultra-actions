@@ -104,6 +104,8 @@ python3 scripts/release/local.py accept --candidate <完整配置运行目录> -
 
 ## 生成发布目录
 
+仅修改安装脚本的候选可附加 `--repair-record <修复记录.json>`，该参数同时用于 `phone-template`、`accept` 和 `stage`。记录与修复 ZIP 放在同一目录。验收仍核对原完整构建，再检查原包和修复包的哈希、成员清单、唯一允许改变的安装脚本、对应提交中的补丁及安装函数测试。真机记录必须绑定修复包和修复证据，不能使用原包的测试记录。发布目录另存原构建 provenance 与安装修复记录。
+
 ```bash
 python3 scripts/release/local.py stage --candidate <完整配置运行目录> --artifacts <完整配置交付目录> --phone-test <真机记录.json> --acceptance <验收.json> --output <版本发布目录>
 ```

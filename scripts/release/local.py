@@ -8,6 +8,8 @@ import json
 from pathlib import Path
 import shutil
 import subprocess
+import tempfile
+import zipfile
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -84,7 +86,9 @@ def check_run(root, candidate, susfs, profile, hide):
 
 
 def check_phone(phone, build):
-    for key in ('builder_commit', 'package_sha256', 'image_sha256', 'tool_sha256', 'local_run_id'):
+    keys = ['builder_commit', 'package_sha256', 'image_sha256', 'tool_sha256', 'local_run_id']
+    keys += [key for key in ('repair_builder_commit', 'repair_evidence_sha256') if key in build]
+    for key in keys:
         if phone.get(key) != build[key]:
             raise ValueError(f'Phone test does not match {key}')
     if not isinstance(phone.get('tester'), str) or not phone['tester'].strip():
@@ -96,9 +100,49 @@ def check_phone(phone, build):
         raise ValueError('All required phone checks must be explicitly true')
 
 
+def check_repair(build, root, repair_path):
+    if repair_path is None:
+        return build
+    repair = json.loads(repair_path.read_text())
+    name = repair['output_zip']
+    if Path(name).name != name or '/' in name or '\\' in name:
+        raise ValueError('Unsafe repair package name')
+    original = root / 'kernel' / build['package']
+    repaired = repair_path.parent / name
+    if (repair.get('operation') != 'installer-only-repackage'
+            or repair.get('source_zip_sha256') != sha(original)
+            or repair.get('output_zip_sha256') != sha(repaired)
+            or repair.get('image_sha256') != build['image_sha256']):
+        raise ValueError('Repair record does not match the source and repaired package')
+    repair_commit = repair['builder_commit']
+    subprocess.run(['git', 'merge-base', '--is-ancestor', repair_commit, 'HEAD'], cwd=ROOT, check=True)
+    patch_path = 'patches/anykernel3-split-status.patch'
+    if subprocess.check_output(['git', 'show', f'{repair_commit}:{patch_path}'], cwd=ROOT) != (ROOT / patch_path).read_bytes():
+        raise ValueError('Repair patch differs from its recorded builder')
+    core = 'tools/ak3-core.sh'
+    with zipfile.ZipFile(original) as before, zipfile.ZipFile(repaired) as after:
+        names = before.namelist()
+        if len(names) != len(set(names)) or names != after.namelist() or after.testzip() is not None:
+            raise ValueError('Repair archive member list or CRC mismatch')
+        changed = [name for name in names if before.read(name) != after.read(name)]
+        if changed != [core]:
+            raise ValueError('Repair may only change the installer core')
+        with tempfile.TemporaryDirectory(prefix='release-repair-') as directory:
+            tree = Path(directory)
+            (tree / 'tools').mkdir()
+            script = tree / core
+            script.write_bytes(before.read(core))
+            subprocess.run(['git', 'apply', str(ROOT / patch_path)], cwd=tree, check=True)
+            if script.read_bytes() != after.read(core):
+                raise ValueError('Repaired installer does not match the reviewed patch')
+            subprocess.run(['python3', str(ROOT / 'scripts/test-anykernel-split.py'), str(script)], check=True)
+    return {**build, 'source_package': build['package'], 'source_package_sha256': sha(original),
+            'package': repaired.name, 'package_sha256': sha(repaired),
+            'repair_builder_commit': repair_commit, 'repair_evidence_sha256': sha(repair_path)}
+
+
 def accept(args):
     build = check_run(args.artifacts, args.candidate, 'true', 'extended-full', 'true')
-    variants = {'current-extended-full-hide': build}
     if args.matrix is not None:
         matrix = json.loads(args.matrix.read_text())
         if (matrix.get('result'), matrix.get('execution_environment'), matrix.get('builder_commit')) != (
@@ -107,6 +151,8 @@ def accept(args):
         delivery = Path(matrix['variants']['current-extended-full-hide']['artifacts'])
         if check_run(delivery, args.candidate, 'true', 'extended-full', 'true') != build:
             raise ValueError('Phone-test package is not the matrix full-feature delivery')
+    build = check_repair(build, args.artifacts, getattr(args, 'repair_record', None))
+    variants = {'current-extended-full-hide': build}
     phone = json.loads(args.phone_test.read_text())
     check_phone(phone, build)
     return {'schema': 3, 'result': 'passed', 'acceptance_environment': 'local', **build,
@@ -129,12 +175,14 @@ def main():
     phone = sub.add_parser('phone-template', help='Write an unconfirmed phone-test form for one delivery')
     phone.add_argument('--artifacts', type=Path, required=True)
     phone.add_argument('--output', type=Path, required=True)
+    phone.add_argument('--repair-record', type=Path, help='Verified installer-only repair receipt')
     for command in ('accept', 'stage'):
         child = sub.add_parser(command)
         child.add_argument('--candidate', type=Path, required=True, help='Exact build snapshot checkout')
         child.add_argument('--artifacts', type=Path, required=True)
         child.add_argument('--matrix', type=Path, help='Optional full-feature delivery record')
         child.add_argument('--phone-test', type=Path, required=True)
+        child.add_argument('--repair-record', type=Path, help='Verified installer-only repair receipt')
         child.add_argument('--output', type=Path, required=True)
         if command == 'stage':
             child.add_argument('--acceptance', type=Path, required=True)
@@ -143,11 +191,13 @@ def main():
         if args.command == 'phone-template':
             checked = artifacts.verify(args.artifacts)
             provenance = fields(args.artifacts)
-            write_new(args.output, {'builder_commit': provenance['builder_commit'],
+            build = {'builder_commit': provenance['builder_commit'], 'package': provenance['package'],
                       'local_run_id': provenance['local_run_id'], 'image_sha256': checked['image_sha256'],
                       'tool_sha256': checked.get('tool_sha256'),
-                      'package_sha256': sha(args.artifacts / 'kernel' / provenance['package']),
-                      'tester': '', 'tested_at': '', 'checks': dict.fromkeys(CHECKS, False), 'notes': ''})
+                      'package_sha256': sha(args.artifacts / 'kernel' / provenance['package'])}
+            build = check_repair(build, args.artifacts, args.repair_record)
+            write_new(args.output, {**build, 'tester': '', 'tested_at': '',
+                                   'checks': dict.fromkeys(CHECKS, False), 'notes': ''})
             return
         record = accept(args)
         if args.command == 'accept':
@@ -160,12 +210,16 @@ def main():
             raise ValueError('Release destination exists')
         temporary = args.output.with_name(args.output.name + '.partial')
         temporary.mkdir(parents=True)
-        sources = [args.artifacts / 'kernel' / record['package'],
-                   args.artifacts / 'kernel/build-provenance.txt',
+        package_root = args.repair_record.parent if args.repair_record else args.artifacts / 'kernel'
+        sources = [package_root / record['package'],
                    args.artifacts / 'kernel/selected.config', args.artifacts / 'kernel/selected.System.map',
                    args.artifacts / 'tool/ksu_susfs-v2.3.0-arm64']
         for source in sources:
             shutil.copyfile(source, temporary / source.name)
+        provenance_name = 'source-build-provenance.txt' if args.repair_record else 'build-provenance.txt'
+        shutil.copyfile(args.artifacts / 'kernel/build-provenance.txt', temporary / provenance_name)
+        if args.repair_record:
+            shutil.copyfile(args.repair_record, temporary / 'installer-repair.json')
         shutil.copyfile(args.acceptance, temporary / 'acceptance.json')
         shutil.copyfile(args.phone_test, temporary / 'phone-test.json')
         # Publish only artifact identities from the matrix, without local filesystem paths.
