@@ -304,9 +304,9 @@ def main():
     parser.add_argument('--jobs', type=int, default=8)
     parser.add_argument('--minimum-free-gib', type=float, default=0,
                         help='Optional free-space threshold in GiB; default: no threshold')
-    parser.add_argument('--profile', choices=['smoke', 'minimal-mount', 'extended-stat', 'extended-full'], default='extended-full')
+    parser.add_argument('--profile', choices=['extended-full'], default='extended-full')
     for option in ('enable-susfs', 'enable-selinux-hide', 'use-anykernel', 'use-ccache'):
-        parser.add_argument('--' + option, choices=['true', 'false'], default='true')
+        parser.add_argument('--' + option, choices=['true', 'false'] if option == 'use-ccache' else ['true'], default='true')
     parser.add_argument('--kernel-source', choices=['approved-pin', 'latest-lineage-24.0'], default='approved-pin')
     parser.add_argument('--check-only', action='store_true')
     parser.add_argument('--export-run', type=Path, help='Retry export of a completed run without rebuilding')

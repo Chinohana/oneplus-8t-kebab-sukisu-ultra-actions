@@ -155,162 +155,22 @@ verify_susfs_profile() {
   fi
 }
 
-configure_tree kernel_baseline out-baseline baseline
-verify_common_config kernel_baseline/out-baseline/.config
-grep -q '^# CONFIG_KSU_SUSFS is not set$' \
-  kernel_baseline/out-baseline/.config
-if grep -Eq '^CONFIG_KSU_SUSFS(_[A-Z0-9_]+)?=[ym]$' \
-  kernel_baseline/out-baseline/.config; then
-  echo "::error::SUSFS was enabled in the baseline."
-  exit 1
-fi
-
-if test "$ENABLE_SUSFS" = "true"; then
-  configure_tree kernel_experiment out-smoke smoke
-  verify_common_config kernel_experiment/out-smoke/.config
-  verify_susfs_profile kernel_experiment/out-smoke/.config smoke
-  if test "$ENABLE_SELINUX_HIDE" = "true"; then
-    verify_selinux_hide_config \
-      kernel_experiment/out-smoke/.config
-  fi
-
-  if test "$PROFILE" = minimal-mount ||
-     test "$PROFILE" = extended-stat ||
-     test "$PROFILE" = extended-full; then
-    configure_tree kernel_experiment out-minimal-mount \
-      minimal-mount
-    verify_common_config \
-      kernel_experiment/out-minimal-mount/.config
-    verify_susfs_profile \
-      kernel_experiment/out-minimal-mount/.config minimal-mount
-    if test "$ENABLE_SELINUX_HIDE" = "true"; then
-      verify_selinux_hide_config \
-        kernel_experiment/out-minimal-mount/.config
-    fi
-
-    cmp \
-      <(sed \
-        '/^CONFIG_KSU_SUSFS_SUS_MOUNT=/d;
-         /^# CONFIG_KSU_SUSFS_SUS_MOUNT is not set$/d' \
-        kernel_experiment/out-smoke/.config) \
-      <(sed \
-        '/^CONFIG_KSU_SUSFS_SUS_MOUNT=/d;
-         /^# CONFIG_KSU_SUSFS_SUS_MOUNT is not set$/d' \
-        kernel_experiment/out-minimal-mount/.config)
-  fi
-
-  if test "$PROFILE" = extended-stat; then
-    configure_tree kernel_experiment out-extended-stat \
-      extended-stat
-    verify_common_config \
-      kernel_experiment/out-extended-stat/.config
-    verify_susfs_profile \
-      kernel_experiment/out-extended-stat/.config extended-stat
-    if test "$ENABLE_SELINUX_HIDE" = "true"; then
-      verify_selinux_hide_config \
-        kernel_experiment/out-extended-stat/.config
-    fi
-
-    cmp \
-      <(sed \
-        '/^CONFIG_KSU_SUSFS_SUS_KSTAT=/d;
-         /^# CONFIG_KSU_SUSFS_SUS_KSTAT is not set$/d' \
-        kernel_experiment/out-minimal-mount/.config) \
-      <(sed \
-        '/^CONFIG_KSU_SUSFS_SUS_KSTAT=/d;
-         /^# CONFIG_KSU_SUSFS_SUS_KSTAT is not set$/d' \
-        kernel_experiment/out-extended-stat/.config)
-  fi
-
-  if test "$PROFILE" = extended-full; then
-    configure_tree kernel_experiment out-extended-full \
-      extended-full
-    verify_common_config \
-      kernel_experiment/out-extended-full/.config
-    verify_susfs_profile \
-      kernel_experiment/out-extended-full/.config extended-full
-    if test "$ENABLE_SELINUX_HIDE" = "true"; then
-      verify_selinux_hide_config \
-        kernel_experiment/out-extended-full/.config
-    fi
-
-    cmp \
-      <(sed -E \
-        '/^CONFIG_KSU_SUSFS_(SUS_PATH|SUS_KSTAT|SPOOF_UNAME|HIDE_KSU_SUSFS_SYMBOLS|SPOOF_CMDLINE_OR_BOOTCONFIG|OPEN_REDIRECT|SUS_MAP)=/d;
-         /^# CONFIG_KSU_SUSFS_(SUS_PATH|SUS_KSTAT|SPOOF_UNAME|HIDE_KSU_SUSFS_SYMBOLS|SPOOF_CMDLINE_OR_BOOTCONFIG|OPEN_REDIRECT|SUS_MAP) is not set$/d' \
-        kernel_experiment/out-minimal-mount/.config) \
-      <(sed -E \
-        '/^CONFIG_KSU_SUSFS_(SUS_PATH|SUS_KSTAT|SPOOF_UNAME|HIDE_KSU_SUSFS_SYMBOLS|SPOOF_CMDLINE_OR_BOOTCONFIG|OPEN_REDIRECT|SUS_MAP)=/d;
-         /^# CONFIG_KSU_SUSFS_(SUS_PATH|SUS_KSTAT|SPOOF_UNAME|HIDE_KSU_SUSFS_SYMBOLS|SPOOF_CMDLINE_OR_BOOTCONFIG|OPEN_REDIRECT|SUS_MAP) is not set$/d' \
-        kernel_experiment/out-extended-full/.config)
-  fi
-
-  kernel_experiment/scripts/diffconfig \
-    kernel_baseline/out-baseline/.config \
-    kernel_experiment/out-smoke/.config \
-    > audit/config-baseline-to-smoke.diff
-  if test "$PROFILE" = minimal-mount; then
-    kernel_experiment/scripts/diffconfig \
-      kernel_experiment/out-smoke/.config \
-      kernel_experiment/out-minimal-mount/.config \
-      > audit/config-smoke-to-minimal-mount.diff
-  fi
-  if test "$PROFILE" = extended-stat; then
-    kernel_experiment/scripts/diffconfig \
-      kernel_experiment/out-smoke/.config \
-      kernel_experiment/out-minimal-mount/.config \
-      > audit/config-smoke-to-minimal-mount.diff
-    kernel_experiment/scripts/diffconfig \
-      kernel_experiment/out-minimal-mount/.config \
-      kernel_experiment/out-extended-stat/.config \
-      > audit/config-minimal-mount-to-extended-stat.diff
-    test "$(
-      wc -l < audit/config-minimal-mount-to-extended-stat.diff
-    )" -eq 1
-    grep -Fqx ' KSU_SUSFS_SUS_KSTAT n -> y' \
-      audit/config-minimal-mount-to-extended-stat.diff
-  fi
-  if test "$PROFILE" = extended-full; then
-    kernel_experiment/scripts/diffconfig \
-      kernel_experiment/out-smoke/.config \
-      kernel_experiment/out-minimal-mount/.config \
-      > audit/config-smoke-to-minimal-mount.diff
-    kernel_experiment/scripts/diffconfig \
-      kernel_experiment/out-minimal-mount/.config \
-      kernel_experiment/out-extended-full/.config \
-      > audit/config-minimal-mount-to-extended-full.diff
-    test "$(
-      wc -l < audit/config-minimal-mount-to-extended-full.diff
-    )" -eq 7
-    for option in \
-      KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS \
-      KSU_SUSFS_OPEN_REDIRECT \
-      KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG \
-      KSU_SUSFS_SPOOF_UNAME \
-      KSU_SUSFS_SUS_KSTAT \
-      KSU_SUSFS_SUS_MAP \
-      KSU_SUSFS_SUS_PATH; do
-      grep -Fqx " ${option} n -> y" \
-        audit/config-minimal-mount-to-extended-full.diff
-    done
-  fi
+if test "$ENABLE_SUSFS" = true; then
+  selected_out="out-$PROFILE"
 else
-  configure_tree kernel_experiment out-selected selected
-  verify_common_config \
-    kernel_experiment/out-selected/.config
-  grep -q '^# CONFIG_KSU_SUSFS is not set$' \
-    kernel_experiment/out-selected/.config
-  if grep -Eq '^CONFIG_KSU_SUSFS(_[A-Z0-9_]+)?=[ym]$' \
-    kernel_experiment/out-selected/.config; then
-    echo "::error::SUSFS was enabled without enable_susfs."
+  selected_out=out-selected
+fi
+configure_tree kernel_experiment "$selected_out" "$PROFILE"
+verify_common_config "kernel_experiment/$selected_out/.config"
+if test "$ENABLE_SUSFS" = true; then
+  verify_susfs_profile "kernel_experiment/$selected_out/.config" "$PROFILE"
+else
+  if grep -Eq '^CONFIG_KSU_SUSFS(_[A-Z0-9_]+)?=[ym]$' "kernel_experiment/$selected_out/.config"; then
+    echo '::error::SUSFS enabled in a build that requested it disabled.'
     exit 1
   fi
-  if test "$ENABLE_SELINUX_HIDE" = "true"; then
-    verify_selinux_hide_config \
-      kernel_experiment/out-selected/.config
-  fi
-  kernel_experiment/scripts/diffconfig \
-    kernel_baseline/out-baseline/.config \
-    kernel_experiment/out-selected/.config \
-    > audit/config-baseline-to-selected.diff
 fi
+if test "$ENABLE_SELINUX_HIDE" = true; then
+  verify_selinux_hide_config "kernel_experiment/$selected_out/.config"
+fi
+echo "SELECTED_OUT=$selected_out" >> "$BUILD_ENV"

@@ -2,17 +2,65 @@ name: Build kebab SukiSU Ultra
 
 on:
   workflow_dispatch:
+    inputs:
+      enable_susfs:
+        description: Enable SUSFS
+        type: boolean
+        default: true
+      susfs_profile:
+        description: SUSFS feature profile
+        type: choice
+        default: extended-full
+        options: [extended-full, extended-stat, minimal-mount, smoke]
+      enable_selinux_hide:
+        description: Include SELinux hide support
+        type: boolean
+        default: true
 
 permissions:
   contents: read
 
 jobs:
   local-build-entry:
+    if: github.repository == 'Chinohana/oneplus-8t-kebab-sukisu-ultra-actions'
     runs-on: ubuntu-24.04
     steps:
-      - name: Show local build entry
+      - name: Show maintained build policy
         run: |
-          echo 'Kernel compilation has moved to the local Linux workspace.'
-          echo 'Run: python3 scripts/build/local.py'
-          echo 'For acceptance and release staging, see docs/LOCAL-BUILD.md.'
-          echo 'This workflow does not build or accept release artifacts.'
+          echo 'Maintained builds and releases use the local full-feature configuration.'
+          echo 'For a custom configuration, fork this repository and run this workflow there.'
+  custom-build:
+    if: github.repository != 'Chinohana/oneplus-8t-kebab-sukisu-ultra-actions'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      ENABLE_SUSFS: ${{ inputs.enable_susfs }}
+      SUSFS_PROFILE: ${{ inputs.susfs_profile }}
+      ENABLE_SELINUX_HIDE: ${{ inputs.enable_selinux_hide }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Free unused hosted-runner SDKs
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache
+          df -h
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bc bison build-essential ccache cpio curl file flex git jq libelf-dev libssl-dev lz4 python3 rsync unzip wget zip xz-utils
+      - name: Build and verify one selected configuration
+        run: bash scripts/build/custom-action.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kebab-${{ inputs.susfs_profile }}-susfs-${{ inputs.enable_susfs }}-hide-${{ inputs.enable_selinux_hide }}
+          path: artifacts/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: custom-build-diagnostics
+          path: audit/
+          retention-days: 7

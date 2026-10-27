@@ -24,6 +24,10 @@ fingerprints = load('local_fingerprint', ROOT / '.github/scripts/verify-runtime-
 matrix_builder = load('local_matrix', ROOT / 'scripts/release/matrix.py')
 CHECKS = ('boot', 'adb', 'root', 'selinux_enforcing', 'susfs', 'selinux_hide', 'storage_decryption',
           'wifi', 'mobile_network', 'front_camera', 'rear_camera', 'fingerprint', 'audio', 'file_io', 'kernel_logs')
+FULL_OPTIONS = ('KSU', 'KSU_SELINUX_HIDE_4_19', 'KSU_SUSFS', 'KSU_SUSFS_SUS_PATH',
+                'KSU_SUSFS_SUS_MOUNT', 'KSU_SUSFS_SUS_KSTAT', 'KSU_SUSFS_SUS_MAP',
+                'KSU_SUSFS_SPOOF_UNAME', 'KSU_SUSFS_ENABLE_LOG', 'KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS',
+                'KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG', 'KSU_SUSFS_OPEN_REDIRECT')
 
 
 def sha(path):
@@ -36,6 +40,11 @@ def fields(root):
 
 def check_run(root, candidate, susfs, profile, hide):
     checked = artifacts.verify(root)
+    if (susfs, profile, hide) != ('true', 'extended-full', 'true'):
+        raise ValueError('Maintained releases require the full-feature configuration')
+    config = set((root / 'kernel/selected.config').read_text().splitlines())
+    if any(f'CONFIG_{option}=y' not in config for option in FULL_OPTIONS):
+        raise ValueError('Full-feature release configuration is incomplete')
     provenance = fields(root)
     head = fingerprints.git(candidate, 'rev-parse', 'HEAD').decode().strip()
     if subprocess.run(['git', '-C', str(candidate), 'diff', '--quiet', 'HEAD', '--'], check=False).returncode:
@@ -89,21 +98,21 @@ def check_phone(phone, build):
 
 def accept(args):
     build = check_run(args.artifacts, args.candidate, 'true', 'extended-full', 'true')
-    matrix = json.loads(args.matrix.read_text())
-    if (matrix.get('result'), matrix.get('execution_environment'), matrix.get('builder_commit')) != (
-            'passed', 'local-wsl2', build['builder_commit']):
-        raise ValueError('Local matrix has not passed for this builder commit')
-    variants = {}
-    for variant, (susfs, profile, hide) in matrix_builder.VARIANTS.items():
-        delivery = Path(matrix['variants'][variant]['artifacts'])
-        variants[variant] = check_run(delivery, args.candidate, susfs, profile, hide)
-    if variants['current-extended-full-hide'] != build:
-        raise ValueError('Phone-test package is not the matrix full-feature delivery')
+    variants = {'current-extended-full-hide': build}
+    if args.matrix is not None:
+        matrix = json.loads(args.matrix.read_text())
+        if (matrix.get('result'), matrix.get('execution_environment'), matrix.get('builder_commit')) != (
+                'passed', 'local-wsl2', build['builder_commit']):
+            raise ValueError('Local matrix has not passed for this builder commit')
+        delivery = Path(matrix['variants']['current-extended-full-hide']['artifacts'])
+        if check_run(delivery, args.candidate, 'true', 'extended-full', 'true') != build:
+            raise ValueError('Phone-test package is not the matrix full-feature delivery')
     phone = json.loads(args.phone_test.read_text())
     check_phone(phone, build)
-    return {'schema': 2, 'result': 'passed', 'acceptance_environment': 'local', **build,
+    return {'schema': 3, 'result': 'passed', 'acceptance_environment': 'local', **build,
             'phone_tested': True, 'phone_tester': phone['tester'], 'tested_at': phone['tested_at'],
-            'phone_evidence_sha256': sha(args.phone_test), 'matrix_evidence_sha256': sha(args.matrix),
+            'phone_evidence_sha256': sha(args.phone_test),
+            'matrix_evidence_sha256': sha(args.matrix) if args.matrix is not None else None,
             'variants': variants}
 
 
@@ -124,7 +133,7 @@ def main():
         child = sub.add_parser(command)
         child.add_argument('--candidate', type=Path, required=True, help='Exact build snapshot checkout')
         child.add_argument('--artifacts', type=Path, required=True)
-        child.add_argument('--matrix', type=Path, required=True)
+        child.add_argument('--matrix', type=Path, help='Optional full-feature delivery record')
         child.add_argument('--phone-test', type=Path, required=True)
         child.add_argument('--output', type=Path, required=True)
         if command == 'stage':
