@@ -1,151 +1,5 @@
-diff --git a/kernel/extension/cpu_spoof.c b/kernel/extension/cpu_spoof.c
-index 0007c2fd..41981430 100644
---- a/kernel/extension/cpu_spoof.c
-+++ b/kernel/extension/cpu_spoof.c
-@@ -170,8 +170,12 @@ static int set_spoof_cpu(const struct ksu_set_spoof_cpu_cmd *cmd)
-                         (struct clocksource **)find_kernel_symbol_exact(
-                             "curr_clocksource");
-                     if (curr_cs_ptr && *curr_cs_ptr) {
-+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 0, 0)
-+                        (*curr_cs_ptr)->archdata.vdso_direct = true;
-+#else
-                         (*curr_cs_ptr)->vdso_clock_mode =
-                             VDSO_CLOCKMODE_ARCHTIMER;
-+#endif
-                     } else {
-                         pr_warn("ksu: set_spoof_cpu failed to resolve 'curr_clocksource'\n");
-                         ++missing;
-diff --git a/kernel/feature/mount_hide.c b/kernel/feature/mount_hide.c
-index fb795aec..804dd9f4 100644
---- a/kernel/feature/mount_hide.c
-+++ b/kernel/feature/mount_hide.c
-@@ -7,6 +7,7 @@
- #include <linux/init.h>
- #include <linux/kernel.h>
- #include <linux/mount.h>
-+#include <linux/magic.h>
- #include <linux/mutex.h>
- #include <linux/printk.h>
- #include <linux/string.h>
-@@ -71,6 +72,9 @@ static bool ksu_path_is_proc_mount_file(struct file *file)
-     if (!file || !file->f_path.dentry)
-         return false;
- 
-+    if (file_inode(file)->i_sb->s_magic != PROC_SUPER_MAGIC)
-+        return false;
-+
-     name = file->f_path.dentry->d_name.name;
-     if (!name)
-         return false;
-diff --git a/kernel/ksu_main.c b/kernel/ksu_main.c
-index 44652407..85770f26 100644
---- a/kernel/ksu_main.c
-+++ b/kernel/ksu_main.c
-@@ -80,9 +80,11 @@
- #include "extension/umount_paths.c"
- #include "extension/dynamic_manager.c"
- #include "extension/kpm.c"
-+#ifdef CONFIG_KPM
- #include "extension/kpm/kpm.c"
- #include "extension/kpm/compact.c"
- #include "extension/kpm/super_access.c"
-+#endif
- #include "extension/susfs_extension.c"
- #include "extension/dynamic_sig_fallback.c"
- 
-diff --git a/kernel/policy/feature.c b/kernel/policy/feature.c
-index 05ae1636..1d6e447f 100644
---- a/kernel/policy/feature.c
-+++ b/kernel/policy/feature.c
-@@ -7,7 +7,9 @@ static const char *const feature_names[KSU_FEATURE_MAX] = {
-     [KSU_FEATURE_KERNEL_UMOUNT] = "kernel_umount",
-     [KSU_FEATURE_SULOG] = "sulog",
-     [KSU_FEATURE_ADB_ROOT] = "adb_root",
-+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0) || defined(CONFIG_KSU_SELINUX_HIDE_4_19)
-     [KSU_FEATURE_SELINUX_HIDE] = "selinux_hide",
-+#endif
-     [KSU_FEATURE_SHELL_SU_ADB_ONLY] = "shell_su_adb_only",
-     [KSU_FEATURE_MOUNT_HIDE] = "mount_hide",
- };
-diff --git a/kernel/runtime/ksud.c b/kernel/runtime/ksud.c
-index ad6c6578..930aa461 100644
---- a/kernel/runtime/ksud.c
-+++ b/kernel/runtime/ksud.c
-@@ -55,7 +55,9 @@ void on_post_fs_data(void)
-     ksu_observer_init();
-     // sanity check, this may influence the performance
-     stop_input_hook();
-+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
-     ksu_selinux_hide_handle_post_fs_data();
-+#endif
-     // retry forced features which failed at second stage
-     ksu_feature_apply_forced();
-     ksu_extension_apply_forced();
-@@ -202,7 +204,9 @@ int ksu_handle_execveat_ksud(int *fd, struct filename **filename_ptr,
- #ifndef KSU_NO_PREINIT
-                 ksu_preinit_release();
- #endif
-+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
-                 ksu_selinux_hide_handle_second_stage();
-+#endif
-                 apply_kernelsu_rules();
-                 cache_sid();
-                 setup_ksu_cred();
-@@ -280,7 +284,9 @@ int ksu_handle_execveat_ksud(int *fd, struct filename **filename_ptr, struct use
- #ifndef KSU_NO_PREINIT
-             ksu_preinit_release();
- #endif
-+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
-             ksu_selinux_hide_handle_second_stage();
-+#endif
-             apply_kernelsu_rules();
-             cache_sid();
-             setup_ksu_cred();
-diff --git a/kernel/selinux/rules.c b/kernel/selinux/rules.c
-index 3d5b86e9..9084986a 100644
---- a/kernel/selinux/rules.c
-+++ b/kernel/selinux/rules.c
-@@ -151,7 +151,9 @@ static int apply_kernelsu_rules_fn(void *ptr)
- 
- void apply_kernelsu_rules(void)
- {
-+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
-     struct selinux_policy *pol, *old_pol;
-+#endif
-     struct policydb *db;
- 
-     if (!getenforce()) {
-@@ -255,6 +257,9 @@ do_stop_machine:
- out_flush:
-     smp_mb();
-     reset_avc_cache();
-+#ifdef CONFIG_KSU_SUSFS
-+    susfs_set_batch_sid();
-+#endif
- #endif
- }
- 
-diff --git a/kernel/sulog/event.c b/kernel/sulog/event.c
-index f012421d..2813209e 100644
---- a/kernel/sulog/event.c
-+++ b/kernel/sulog/event.c
-@@ -372,9 +372,14 @@ static struct ksu_sulog_pending_event *ksu_sulog_capture_grant_root(const struct
-     struct ksu_sulog_event *event;
- 
-     // This is actually stupid fix
-+#ifdef CONFIG_KSU_SUSFS
-     #define USER_ARG_NULL user_arg_null_ptr()
-+#else
-+    #define USER_ARG_NULL (*user_arg_null_ptr())
-+#endif
- 
-     pending = ksu_sulog_capture(KSU_SULOG_EVENT_IOCTL_GRANT_ROOT, NULL, USER_ARG_NULL, gfp);
-+    #undef USER_ARG_NULL
-     if (!pending)
-         return NULL;
- 
 diff --git a/kernel/Makefile b/kernel/Makefile
-index 8492b9cd..16978c44 100644
+index bed47b88..5efbbb08 100644
 --- a/kernel/Makefile
 +++ b/kernel/Makefile
 @@ -62,26 +62,13 @@ REPO_BRANCH := main
@@ -176,12 +30,29 @@ index 8492b9cd..16978c44 100644
 +GIT_BIN := /usr/bin/env PATH="$$PATH":/usr/bin:/usr/local/bin git
 +KSU_SRC := $(KSU_KERNEL_DIR)
 +git_short_sha := $(shell cd $(KSU_SRC) && $(GIT_BIN) rev-parse --short=8 HEAD)
-+KSU_VERSION ?= 41074
++KSU_VERSION ?= 41095
 +VERSION_TAG := 4.2.1
 +KSU_VERSION_FULL := v$(VERSION_TAG)-$(git_short_sha)@builtin
  $(info -- $(REPO_NAME) version: $(KSU_VERSION) [$(KSU_VERSION_FULL)])
  
  ccflags-y += -DKSU_VERSION=$(KSU_VERSION)
+diff --git a/kernel/extension/cpu_spoof.c b/kernel/extension/cpu_spoof.c
+index 0007c2fd..41981430 100644
+--- a/kernel/extension/cpu_spoof.c
++++ b/kernel/extension/cpu_spoof.c
+@@ -170,8 +170,12 @@ static int set_spoof_cpu(const struct ksu_set_spoof_cpu_cmd *cmd)
+                         (struct clocksource **)find_kernel_symbol_exact(
+                             "curr_clocksource");
+                     if (curr_cs_ptr && *curr_cs_ptr) {
++#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 0, 0)
++                        (*curr_cs_ptr)->archdata.vdso_direct = true;
++#else
+                         (*curr_cs_ptr)->vdso_clock_mode =
+                             VDSO_CLOCKMODE_ARCHTIMER;
++#endif
+                     } else {
+                         pr_warn("ksu: set_spoof_cpu failed to resolve 'curr_clocksource'\n");
+                         ++missing;
 diff --git a/kernel/extension/dynamic_sig_fallback.c b/kernel/extension/dynamic_sig_fallback.c
 index 84ff67bd..df15b912 100644
 --- a/kernel/extension/dynamic_sig_fallback.c
@@ -234,6 +105,28 @@ index 84ff67bd..df15b912 100644
              };
              struct file *file;
  
+diff --git a/kernel/feature/mount_hide.c b/kernel/feature/mount_hide.c
+index fb795aec..804dd9f4 100644
+--- a/kernel/feature/mount_hide.c
++++ b/kernel/feature/mount_hide.c
+@@ -7,6 +7,7 @@
+ #include <linux/init.h>
+ #include <linux/kernel.h>
+ #include <linux/mount.h>
++#include <linux/magic.h>
+ #include <linux/mutex.h>
+ #include <linux/printk.h>
+ #include <linux/string.h>
+@@ -71,6 +72,9 @@ static bool ksu_path_is_proc_mount_file(struct file *file)
+     if (!file || !file->f_path.dentry)
+         return false;
+ 
++    if (file_inode(file)->i_sb->s_magic != PROC_SUPER_MAGIC)
++        return false;
++
+     name = file->f_path.dentry->d_name.name;
+     if (!name)
+         return false;
 diff --git a/kernel/kernel_includes.h b/kernel/kernel_includes.h
 index 422fde3d..888b8f1b 100644
 --- a/kernel/kernel_includes.h
@@ -248,32 +141,71 @@ index 422fde3d..888b8f1b 100644
  #ifdef CONFIG_KSU_SUSFS
  #include <linux/susfs.h>
  #include <linux/susfs_def.h>
+diff --git a/kernel/ksu_main.c b/kernel/ksu_main.c
+index 8b1272d5..39872188 100644
+--- a/kernel/ksu_main.c
++++ b/kernel/ksu_main.c
+@@ -81,9 +81,11 @@
+ #include "extension/umount_paths.c"
+ #include "extension/dynamic_manager.c"
+ #include "extension/kpm.c"
++#ifdef CONFIG_KPM
+ #include "extension/kpm/kpm.c"
+ #include "extension/kpm/compact.c"
+ #include "extension/kpm/super_access.c"
++#endif
+ #include "extension/susfs_extension.c"
+ #include "extension/dynamic_sig_fallback.c"
+ #include "extension/version_spoof.c"
 diff --git a/kernel/manager/pkg_observer.c b/kernel/manager/pkg_observer.c
-index 50ed76a4..2e81a03e 100644
+index 375e6b60..b10ac789 100644
 --- a/kernel/manager/pkg_observer.c
 +++ b/kernel/manager/pkg_observer.c
-@@ -31,6 +31,10 @@ static void ksu_defer_track_throne(void)
- {
+@@ -32,7 +32,9 @@ static void ksu_defer_track_throne(void)
      struct callback_head *cb;
  
+     // Renew the getpriority uid bitmap filter
 +#ifdef CONFIG_KSU_SUSFS
-+    susfs_parse_priority_app_strings();
+     susfs_parse_priority_app_strings();
 +#endif
-+
+ 
      if (!(current->flags & PF_KTHREAD)) {
          cb = kzalloc(sizeof(*cb), GFP_KERNEL);
-         if (cb) {
-diff --git a/kernel/supercall/dispatch.c b/kernel/supercall/dispatch.c
-index e496da2e..ec50b312 100644
---- a/kernel/supercall/dispatch.c
-+++ b/kernel/supercall/dispatch.c
-@@ -471,6 +471,9 @@ int ksu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd, void __user
-             susfs_add_sus_map(arg);
-             return 0;
- #endif // #ifdef CONFIG_KSU_SUSFS_SUS_MAP
-+        case CMD_SUSFS_SET_PRIORITY_UID_FILTER:
-+            susfs_set_priority_uid_filter(arg);
-+            return 0;
-         case CMD_SUSFS_ENABLE_AVC_LOG_SPOOFING:
-             susfs_set_avc_log_spoofing(arg);
-             return 0;
+diff --git a/kernel/policy/feature.c b/kernel/policy/feature.c
+index 05ae1636..1d6e447f 100644
+--- a/kernel/policy/feature.c
++++ b/kernel/policy/feature.c
+@@ -7,7 +7,9 @@ static const char *const feature_names[KSU_FEATURE_MAX] = {
+     [KSU_FEATURE_KERNEL_UMOUNT] = "kernel_umount",
+     [KSU_FEATURE_SULOG] = "sulog",
+     [KSU_FEATURE_ADB_ROOT] = "adb_root",
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0) || defined(CONFIG_KSU_SELINUX_HIDE_4_19)
+     [KSU_FEATURE_SELINUX_HIDE] = "selinux_hide",
++#endif
+     [KSU_FEATURE_SHELL_SU_ADB_ONLY] = "shell_su_adb_only",
+     [KSU_FEATURE_MOUNT_HIDE] = "mount_hide",
+ };
+diff --git a/kernel/selinux/rules.c b/kernel/selinux/rules.c
+index 3d5b86e9..9084986a 100644
+--- a/kernel/selinux/rules.c
++++ b/kernel/selinux/rules.c
+@@ -151,7 +151,9 @@ static int apply_kernelsu_rules_fn(void *ptr)
+ 
+ void apply_kernelsu_rules(void)
+ {
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
+     struct selinux_policy *pol, *old_pol;
++#endif
+     struct policydb *db;
+ 
+     if (!getenforce()) {
+@@ -255,6 +257,9 @@ do_stop_machine:
+ out_flush:
+     smp_mb();
+     reset_avc_cache();
++#ifdef CONFIG_KSU_SUSFS
++    susfs_set_batch_sid();
++#endif
+ #endif
+ }
+ 

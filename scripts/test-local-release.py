@@ -36,6 +36,17 @@ class PhoneEvidence(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'explicitly true'):
             release.check_phone(self.phone, self.build)
 
+    def test_repaired_package_needs_exact_repair_evidence(self):
+        build = {**self.build, 'repair_builder_commit': 'e' * 40,
+                 'repair_evidence_sha256': 'f' * 64}
+        with self.assertRaisesRegex(ValueError, 'repair_builder_commit'):
+            release.check_phone(self.phone, build)
+        phone = {**self.phone, 'repair_builder_commit': 'e' * 40,
+                 'repair_evidence_sha256': 'f' * 64}
+        release.check_phone(phone, build)
+        with self.assertRaisesRegex(ValueError, 'repair_evidence_sha256'):
+            release.check_phone({**phone, 'repair_evidence_sha256': 'changed'}, build)
+
     def test_package_or_snapshot_change_invalidates_phone_test(self):
         for key in ('package_sha256', 'builder_commit', 'image_sha256', 'tool_sha256', 'local_run_id'):
             with self.subTest(key=key), self.assertRaisesRegex(ValueError, key):

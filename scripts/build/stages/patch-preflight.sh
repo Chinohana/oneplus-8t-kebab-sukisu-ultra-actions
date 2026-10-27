@@ -96,10 +96,7 @@ kernel/kernel_includes.h
 kernel/ksu_main.c
 kernel/manager/pkg_observer.c
 kernel/policy/feature.c
-kernel/runtime/ksud.c
 kernel/selinux/rules.c
-kernel/sulog/event.c
-kernel/supercall/dispatch.c
 EOF
 sed -i 's/^          //' \
   "$BUILD_TEMP/sukisu-compat-files.expected"
@@ -115,7 +112,6 @@ if test "$ENABLE_SELINUX_HIDE" = "true"; then
 kernel/Kconfig
 kernel/feature/selinux_hide.c
 kernel/feature/selinux_hide.h
-kernel/include/uapi/feature.h
 kernel/ksu_main.c
 kernel/runtime/ksud.c
 kernel/selinux/rules.c
