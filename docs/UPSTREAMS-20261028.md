@@ -24,4 +24,14 @@ Manager APK SHA-256：`c13f4884b47e6648fb116ed49647eaa544ee54d6c30467b933164bdcc
 
 ## 本地验证
 
-扩展 ABI 宿主测试与上游安装函数四项测试已通过。下一步只构建 SUSFS extended-full + SELinux hide 一个完整配置；完整构建、审计与导出结果完成后补记。本次候选尚未进行真机验收，也未发布；正式下载仍为已验收的 41095。
+46 项本地回归通过。完整运行 `local-full-20261028-094032` 使用 builder `ca9fbfdd79d0402579e5ead1f177d834883742c8`、16 任务并行，只编译 SUSFS extended-full + SELinux hide 一个 Image。源码、补丁、SELinux hide、SUSFS、hook、配置和产物审计、用户态工具、AnyKernel3 打包及导出校验全部通过。扩展 ABI 宿主测试在两份实际审计源码上通过，打包阶段的四项安装函数测试通过。
+
+复用对象后的 make 为 90.589 秒，包含同步与快照的增量步骤为 107.812 秒，流水线阶段合计 145.75 秒；流水线计时不包含入口初始化和最终导出的全部耗时。
+
+- Image SHA-256：`1039b86916e3af668060d9bde0950efbe8985be3d3685589dc1b46e271b05268`
+- 配置 SHA-256：`6d6f2b340e06861ae28ab2b7196c4c0ab9e9397cd0a1ee0e9a79e9501e448d25`
+- System.map SHA-256：`8d0794592ebb294a527e3df02dacac19bb68e43f084beb9e25b23e85ce6efbe0`
+
+本次上游 `ak3-core.sh` 与已安装的 41095 AK3fix 包内对应文件逐字节一致，SHA-256 为 `0544478d92865e2f16aab00676de475af8bbbb0abecea738716f4aea3f484c9b`。这只说明安装脚本一致；新 Image 已变化，不能沿用旧包的真机验收。
+
+本次候选尚未进行真机验收，也未发布；正式下载仍为已验收的 41095。
