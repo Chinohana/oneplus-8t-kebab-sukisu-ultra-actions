@@ -14,23 +14,21 @@
 | 系统 | LineageOS 24.0 / Android 17 / API 37 |
 | 内核 | Linux 4.19，LineageOS `lineage-24.0` |
 | 当前源码固定版本 | SukiSU builtin 41097、SUSFS v2.3.0 NON-GKI |
-| 最新正式发布 | [v2026.10.28-ksu41095](https://github.com/Chinohana/oneplus-8t-kebab-sukisu-ultra-actions/releases/tag/v2026.10.28-ksu41095) |
+| 最新正式发布 | [v2026.10.28-ksu41097](https://github.com/Chinohana/oneplus-8t-kebab-sukisu-ultra-actions/releases/tag/v2026.10.28-ksu41097) |
 | 编译器 | Android Clang `r563880` |
 
-41095 完整功能版已完成本地构建与审计。2026-10-28 维护者确认 AK3fix 安装包的全部真机检查通过，本地验收绑定该包的精确哈希后发布。详见[上游同步与 Manager 选择](docs/UPSTREAM-SYNC-20261027.md)和[安装脚本修复及验收](docs/INSTALLER-FIX-20261028.md)。
-
-当前源码已同步 41097，本地完整构建与审计通过，尚未完成本次真机验收；正式下载仍为已验收的 41095。新候选的构建结果见[2026-10-28 上游同步](docs/UPSTREAMS-20261028.md)。
+41097 完整功能版已完成本地构建、审计和交付校验。2026-10-28 维护者明确确认本次安装包的全部真机检查正常，本地验收绑定该包的精确哈希后发布。版本选择、扩展 ABI 变化和构建结果见[2026-10-28 上游同步](docs/UPSTREAMS-20261028.md)。
 
 ## 下载与安装
 
 在 [Releases 的 Assets](https://github.com/Chinohana/oneplus-8t-kebab-sukisu-ultra-actions/releases/latest) 下载适合设备和 ROM 的文件。此后维护者发布的内核只提供完整功能版，不再分别提供精简版或关闭 SELinux hide 的安装包。既有历史附件保留原样。
 
-当前正式版可直接下载：[内核安装 ZIP](https://github.com/Chinohana/oneplus-8t-kebab-sukisu-ultra-actions/releases/download/v2026.10.28-ksu41095/SukiSU-kebab-LOS24.0-KSU41095-20261028-AnyKernel3.zip) · [SHA256SUMS](https://github.com/Chinohana/oneplus-8t-kebab-sukisu-ultra-actions/releases/download/v2026.10.28-ksu41095/SHA256SUMS)。
+当前正式版可直接下载：[内核安装 ZIP](https://github.com/Chinohana/oneplus-8t-kebab-sukisu-ultra-actions/releases/download/v2026.10.28-ksu41097/SukiSU-kebab-LOS24.0-KSU41097-20261028-AnyKernel3.zip) · [SHA256SUMS](https://github.com/Chinohana/oneplus-8t-kebab-sukisu-ultra-actions/releases/download/v2026.10.28-ksu41097/SHA256SUMS)。
 
 | 文件 | 用途 |
 | --- | --- |
 | `…-AnyKernel3.zip` | 可安装的内核 ZIP |
-| `SukiSU_v4.2.1-r2_41095-release.apk` | 与本版匹配的 Manager |
+| `SukiSU_v4.2.1-r2_41097-release.apk` | 与本版匹配的 Manager |
 | `SHA256SUMS` | 同版本附件的哈希清单 |
 | `…-full-artifacts.zip` | 配置、工具与来源记录等完整交付归档，不能直接刷入 |
 | `Image` | 原始内核，不是完整 boot 镜像 |
