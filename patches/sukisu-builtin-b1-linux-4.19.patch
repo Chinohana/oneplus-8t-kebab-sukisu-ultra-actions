@@ -30,7 +30,7 @@ index bed47b88..5efbbb08 100644
 +GIT_BIN := /usr/bin/env PATH="$$PATH":/usr/bin:/usr/local/bin git
 +KSU_SRC := $(KSU_KERNEL_DIR)
 +git_short_sha := $(shell cd $(KSU_SRC) && $(GIT_BIN) rev-parse --short=8 HEAD)
-+KSU_VERSION ?= 41095
++KSU_VERSION ?= 41097
 +VERSION_TAG := 4.2.1
 +KSU_VERSION_FULL := v$(VERSION_TAG)-$(git_short_sha)@builtin
  $(info -- $(REPO_NAME) version: $(KSU_VERSION) [$(KSU_VERSION_FULL)])

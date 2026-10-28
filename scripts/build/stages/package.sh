@@ -7,10 +7,8 @@ git -C AnyKernel3 fetch --no-tags --depth=1 \
   "${ANYKERNEL_SEED:-$ANYKERNEL_REPOSITORY}" "$ANYKERNEL_COMMIT"
 git -C AnyKernel3 checkout --detach "$ANYKERNEL_COMMIT"
 test "$(git -C AnyKernel3 rev-parse HEAD)" = "$ANYKERNEL_COMMIT"
-git -C AnyKernel3 apply --check --whitespace=error-all \
-  "$BUILD_ROOT/patches/anykernel3-split-status.patch"
-git -C AnyKernel3 apply --whitespace=error-all \
-  "$BUILD_ROOT/patches/anykernel3-split-status.patch"
+# The pinned upstream now includes the unpack status fix. Keep testing the
+# actual installer; the old patch is retained only for historical repackaging.
 python3 "$BUILD_ROOT/scripts/test-anykernel-split.py" AnyKernel3/tools/ak3-core.sh
 rm -rf AnyKernel3/.git
 cp \
