@@ -17,6 +17,7 @@ require_one_call() {
 }
 
 for tree in kernel_baseline kernel_experiment; do
+  python3 "$BUILD_ROOT/scripts/test-extension-abi.py" "$tree/KernelSU/kernel"
   python3 "$BUILD_ROOT/scripts/test-mount-hide.py" \
     "$tree/KernelSU/kernel/feature/mount_hide.c"
   python3 "$BUILD_ROOT/scripts/test-manager-crown.py" \

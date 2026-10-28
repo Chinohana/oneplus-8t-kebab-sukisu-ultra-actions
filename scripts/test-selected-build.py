@@ -63,7 +63,7 @@ path.write_text('\\n'.join(lines)+'\\n')
                        'BUILD_TEMP': str(root/'build-temp'), 'BUILD_ENV': str(environment),
                        'ENABLE_SUSFS': susfs, 'ENABLE_SELINUX_HIDE': hide, 'PROFILE': profile,
                        'KERNEL_DEFCONFIG': 'vendor/kona-perf_defconfig', 'OPLUS_CONFIG': 'vendor/oplus.config',
-                       'SUKISU_DRIVER_VERSION': '41095', 'USE_CCACHE': 'false', 'BUILD_JOBS': '2',
+                       'SUKISU_DRIVER_VERSION': '41097', 'USE_CCACHE': 'false', 'BUILD_JOBS': '2',
                        'KERNEL_COMMIT': 'test-commit', 'CCACHE_HIDE_TAG': 'test'}
                 git = root / 'bin/git'
                 git.write_text('#!/usr/bin/env bash\nprintf 12345\n')

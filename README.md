@@ -13,11 +13,13 @@
 | 设备 | OnePlus 8T（`kebab`，已测试型号 KB2000） |
 | 系统 | LineageOS 24.0 / Android 17 / API 37 |
 | 内核 | Linux 4.19，LineageOS `lineage-24.0` |
-| 当前源码固定版本 | SukiSU builtin 41095、SUSFS v2.3.0 NON-GKI |
+| 当前源码固定版本 | SukiSU builtin 41097、SUSFS v2.3.0 NON-GKI |
 | 最新正式发布 | [v2026.10.28-ksu41095](https://github.com/Chinohana/oneplus-8t-kebab-sukisu-ultra-actions/releases/tag/v2026.10.28-ksu41095) |
 | 编译器 | Android Clang `r563880` |
 
 41095 完整功能版已完成本地构建与审计。2026-10-28 维护者确认 AK3fix 安装包的全部真机检查通过，本地验收绑定该包的精确哈希后发布。详见[上游同步与 Manager 选择](docs/UPSTREAM-SYNC-20261027.md)和[安装脚本修复及验收](docs/INSTALLER-FIX-20261028.md)。
+
+当前源码已同步 41097，本地完整构建与审计通过，尚未完成本次真机验收；正式下载仍为已验收的 41095。新候选的构建结果见[2026-10-28 上游同步](docs/UPSTREAMS-20261028.md)。
 
 ## 下载与安装
 
