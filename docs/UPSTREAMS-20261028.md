@@ -34,4 +34,8 @@ Manager APK SHA-256：`c13f4884b47e6648fb116ed49647eaa544ee54d6c30467b933164bdcc
 
 本次上游 `ak3-core.sh` 与已安装的 41095 AK3fix 包内对应文件逐字节一致，SHA-256 为 `0544478d92865e2f16aab00676de475af8bbbb0abecea738716f4aea3f484c9b`。这只说明安装脚本一致；新 Image 已变化，不能沿用旧包的真机验收。
 
-本次候选尚未进行真机验收，也未发布；正式下载仍为已验收的 41095。
+2026-10-28 维护者在本会话明确确认：本次 41097 候选已安装启动，ADB、root、SELinux Enforcing、SUSFS、SELinux hide、解密、Wi-Fi、移动网络、前后相机、指纹、音频、文件读写和内核日志均正常，并授权正式发布。结果由维护者确认，非自动设备测试。
+
+本地发布工具重新核对 builder `ca9fbfdd79d0402579e5ead1f177d834883742c8` 的完整构建、配置、工具、安装包和真机记录，accept 与 stage 均通过。正式发布为 [v2026.10.28-ksu41097](https://github.com/Chinohana/oneplus-8t-kebab-sukisu-ultra-actions/releases/tag/v2026.10.28-ksu41097)，只提供同一完整功能配置；公开安装 ZIP 与已验收候选逐字节一致，SHA-256 为 `3274d0fd4697e4281366c7570d7d87d7942184017b351475f41bba7f3ba56347`。
+
+Manager 41097 相对上一正式版的 41095 有已核实的功能/UI 更新，发布复用本次候选已下载的 APK，没有重复下载。六个远端附件的 SHA-256 与本地发布目录逐一核对一致。
