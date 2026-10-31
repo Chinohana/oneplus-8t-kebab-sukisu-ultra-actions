@@ -14,8 +14,8 @@ SUSFS 从 `27e0a0e42745991ba09d6f96a97bf4b83f41a012` 更新到 `ee155a1ad4219804
 
 ## 工具链
 
-按本次要求保留 Clang r563880（归档提交 `6f88d37dd82ba741ca279539d44bb7da27ab1844`）与 NDK r27c（27.2.12479018），不下载或切换编译器。核对 [NDK 官方发布记录](https://github.com/android/ndk/releases) 中 r27 至 r30 的说明，未发现明确标注重大漏洞或 CVE 的升级要求；r30 记录了 LTO 运行时崩溃、误编译等修复。这一结论只限所查公告，不能证明旧工具链没有漏洞。
+按本次要求保留 Clang r563880（归档提交 `6f88d37dd82ba741ca279539d44bb7da27ab1844`）与 NDK r27c（27.2.12479018），不下载或切换编译器。核对 [NDK 官方发布记录](https://github.com/android/ndk/releases) 中 r27 至 r30 的说明，未发现明确标注重大漏洞或 CVE 的升级要求；r30 记录了 LTO 运行时崩溃、误编译等修复。另核对 [AOSP Clang 活动分支](https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+/refs/heads/mirror-goog-main-llvm-toolchain-source) 最近 100 条提交，看到 r614150、r596125 等版本变动，未找到明确标注重大漏洞或 CVE 的条目。这一结论只限所查公告与提交范围，不能证明旧工具链没有漏洞。
 
 ## 验证
 
-扩展 ABI 宿主测试已在本次 builtin 源码上通过，覆盖 ABI 2 枚举、越界及空指针，同时保留旧客户端与结构布局检查。内核编译和真机验收结果另行记录。
+扩展 ABI 宿主测试已在本次 builtin 源码上通过，覆盖 ABI 2 枚举、越界及空指针，同时保留旧客户端与结构布局检查。WSL 环境预检通过；本地构建工具 14 项测试、单一配置策略 2 项测试通过。完整构建 `local-full-20261101-011945` 使用 builder `052e433304a4d6356782174b053ddccd1d7668a3`，通过补丁应用和 SELinux hide 审计，在 SUSFS 审计阶段因文件系统 I/O 错误退出（120），连 `local-result.json` 也未能写入。同期发布工具测试有 6 项因相同 I/O 错误或无法创建临时目录失败，不能记为通过。Windows 查询 E 盘剩余约 14 MB；本次未删除历史证据或产物。需要腾出编译库存储空间并恢复 WSL 后重新执行预检和完整构建。本次没有新内核产物，没有真机测试，也没有发布。
