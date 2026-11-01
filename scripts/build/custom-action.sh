@@ -34,12 +34,12 @@ toolchains/clang/bin/clang --version | tee audit/clang-version.txt
 grep -Fq "${CLANG_REVISION#clang-}" audit/clang-version.txt
 rm "$BUILD_TEMP/clang.tar.gz"
 if test "$ENABLE_SUSFS" = true; then
-  curl -fL --retry 3 https://dl.google.com/android/repository/android-ndk-r27c-linux.zip -o "$BUILD_TEMP/ndk.zip"
-  printf '%s  %s\n' 090e8083a715fdb1a3e402d0763c388abb03fb4e "$BUILD_TEMP/ndk.zip" | sha1sum -c -
+  curl -fL --retry 3 https://dl.google.com/android/repository/android-ndk-r30-linux.zip -o "$BUILD_TEMP/ndk.zip"
+  printf '%s  %s\n' 5107f898313790e449e87eee2183d9a20602dee9 "$BUILD_TEMP/ndk.zip" | sha1sum -c -
   sha256sum "$BUILD_TEMP/ndk.zip" >> audit/toolchain-downloads.sha256
   unzip -q "$BUILD_TEMP/ndk.zip" -d toolchains
   rm "$BUILD_TEMP/ndk.zip"
-  export ANDROID_NDK_ROOT="$BUILD_ROOT/toolchains/android-ndk-r27c"
+  export ANDROID_NDK_ROOT="$BUILD_ROOT/toolchains/android-ndk-r30"
   grep -Fq "Pkg.Revision = $ANDROID_NDK_VERSION" "$ANDROID_NDK_ROOT/source.properties"
 fi
 export KERNEL_COMMIT="$(bash .github/scripts/resolve-kernel-pin.sh "$BUILD_ROOT" | tail -n1)"
