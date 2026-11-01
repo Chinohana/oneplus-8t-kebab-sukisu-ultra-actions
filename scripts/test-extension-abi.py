@@ -26,6 +26,7 @@ def main(kernel):
     dispatch = (kernel / 'supercall/dispatch.c').read_text()
     prefix = r'''
 #include <stdint.h>
+#include <stdio.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <string.h>
@@ -46,6 +47,9 @@ typedef uint64_t u64;
     prefix += supercall[at:supercall.index('};', at) + 2] + '\n'
     prefix += '#include "' + str(kernel / 'include/uapi/extension.h') + '"\n'
     helpers = r'''
+static unsigned long forced_mask[2];
+#define test_bit(id, mask) 0
+#define strscpy(dst, src, n) snprintf(dst, n, "%s", src)
 static int extension_mutex;
 static const struct ksu_extension_handler *extension_handlers[KSU_EXTENSION_MAX];
 static bool ksu_extension_is_forced(u32 id) { return false; }
@@ -60,7 +64,7 @@ static int copy_to_user(void *to, const void *from, size_t n) {
 }
 '''
     functions = '\n'.join(function(source, name) for name in (
-        'extension_api_allowed', 'extension_handler_validate', 'ksu_extension_get'))
+        'extension_api_allowed', 'extension_handler_validate', 'ksu_extension_get', 'ksu_extension_enumerate'))
     functions += '\n' + function(dispatch, 'extension_reply_caps') + '\n' + function(dispatch, 'do_extension')
     tests = r'''
 _Static_assert(sizeof(struct ksu_extension_cmd) == 32, "ioctl payload size changed");
@@ -94,13 +98,21 @@ int main(void) {
     assert(ksu_extension_get(1, 0, &value, &caps) == 0 && caps == 0 && value == 0);
     h.min_api_version = 1; h.caps = KSU_EXTENSION_FLAG_REBOOT;
     struct ksu_extension_cmd cmd = { .id = KSU_EXTENSION_ABI_PROBE_ID, .op = KSU_EXTENSION_ABI };
-    assert(do_extension(&cmd) == 0 && cmd.api_version == 1);
+    assert(do_extension(&cmd) == 0 && cmd.api_version == KSU_EXTENSION_API_VERSION);
+    struct ksu_extension_desc desc;
+    cmd.op = KSU_EXTENSION_ENUM; cmd.user_ptr = (uintptr_t)&desc; cmd.value = 0;
+    assert(do_extension(&cmd) == 0 && desc.id == 1);
+    cmd.id = KSU_EXTENSION_ABI_PROBE_ID; cmd.value = 1;
+    assert(do_extension(&cmd) == -ENOENT);
+    cmd.value = 0; cmd.user_ptr = 0;
+    assert(do_extension(&cmd) == -EINVAL);
+    cmd.op = KSU_EXTENSION_ABI;
     cmd.id = 1;
     assert(do_extension(&cmd) == -EINVAL);  /* probe requires out-of-range id */
     cmd.op = KSU_EXTENSION_GET; cmd.api_version = 0;
     assert(do_extension(&cmd) == 0);
     assert(cmd.supported == (KSU_FEATURE_FLAG_SUPPORTED | KSU_EXTENSION_FLAG_REBOOT));
-    assert(cmd.api_version == 1);
+    assert(cmd.api_version == KSU_EXTENSION_API_VERSION);
     cmd.id = KSU_EXTENSION_MAX - 1;
     assert(do_extension(&cmd) == -EOPNOTSUPP);
     ops.get = failing_get; h.ops = &ops;
