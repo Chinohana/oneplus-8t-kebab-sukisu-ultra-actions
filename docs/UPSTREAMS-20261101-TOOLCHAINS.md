@@ -10,4 +10,10 @@
 
 builtin 仍为 `b16e899a555e9b96aa1225f049cd7274820ca5b8`。LineageOS `lineage-24.0` 与 AnyKernel3 仍为原 pin。SUSFS 上游最新 `0d5b1ceb4ca4cddbe59d04233f4425a83030aa71` 包含 priority UID 解析调整，但其间还包含上游标记为实验性、未完成的 SELinux hide 重构；本次先保留现有 `ee155a1ad4219804a7c54cb39dd4fa1b5c2a3fa4`，不把未移植的新源码记作已同步。
 
-工具链下载及完整构建尚待验证；本记录不代表真机验收。
+## 本地验证
+
+Clang 归档 SHA-256 为 `554c9a97e23ced48aacb7bc1184911e9767130e3fb7185dd86516ad8d3a49e6d`；gzip 完整性检查通过，`clang-23`、`lld`、`llvm-ar` 和 `llvm-nm` 的 Git 对象哈希与固定 AOSP 提交一致。NDK r30 的 SHA-256 为 `753611f410d002cfcd3f3dc2ef49aad532089d3180b436c060a90bf0fcb64df2`，版本及官方 SHA-1 检查通过。
+
+完整配置构建 `local-full-20261101-191139` 使用 builder `cd6863a2b50a4dbe635711f508fc1d3892e8f2d7`。预检、源码与补丁审计、内核编译、产物审计、工具编译、打包和导出校验通过。新 Clang 首次构建的 make 耗时 280.74 秒；本地构建入口 14 项测试、单一配置 2 项测试及发布工具 12 项测试通过。
+
+Image SHA-256 为 `38ceeac38906401b418bfe653c9a77163387c3e163de76b65254f311c1596f3d`，安装包 SHA-256 为 `fba63560e0918dbf99047da5193020d2359b9052cff8be4af7970bc17e3e79b8`。产物尚未进行真机测试或正式验收。
