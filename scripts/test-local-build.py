@@ -118,7 +118,7 @@ class Preflight(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, 'Clang revision'):
                     local.preflight(args)
             with patch.object(local.shutil, 'which', return_value='/test/bin'), patch.object(local, 'run',
-                    side_effect=['x86_64', 'ext4', 'Android clang r563880']):
+                    side_effect=['x86_64', 'ext4', local.pins(local.ROOT)['CLANG_REVISION']]):
                 with self.assertRaisesRegex(ValueError, 'NDK revision'):
                     local.preflight(args)
 

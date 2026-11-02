@@ -15,7 +15,7 @@
 | 内核 | Linux 4.19，LineageOS `lineage-24.0` |
 | 当前源码固定版本 | SukiSU builtin 41097、SUSFS v2.3.0 NON-GKI |
 | 最新正式发布 | [v2026.10.28-ksu41097](https://github.com/Chinohana/oneplus-8t-kebab-sukisu-ultra-actions/releases/tag/v2026.10.28-ksu41097) |
-| 编译器 | Android Clang `r563880` |
+| 编译器 | Android Clang `r614150` |
 
 41097 完整功能版已完成本地构建、审计和交付校验。2026-10-28 维护者明确确认本次安装包的全部真机检查正常，本地验收绑定该包的精确哈希后发布。版本选择、扩展 ABI 变化和构建结果见[2026-10-28 上游同步](docs/UPSTREAMS-20261028.md)。
 

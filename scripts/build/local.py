@@ -342,7 +342,7 @@ def main():
         args.jobs = automatic_jobs()
     p = pins(ROOT)
     defaults = {'clang': args.workspace / 'toolchains' / p['CLANG_REVISION'],
-                'ndk': args.workspace / 'toolchains/android-ndk-r27c',
+                'ndk': args.workspace / 'toolchains/android-ndk-r30',
                 'cache_dir': args.workspace / 'cache/pipeline-ccache',
                 'object_cache_dir': args.workspace / 'cache/compile-objects',
                 'lto_cache_dir': args.workspace / 'cache/thinlto',
