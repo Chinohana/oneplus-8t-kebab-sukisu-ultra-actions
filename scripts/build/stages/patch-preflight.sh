@@ -96,6 +96,7 @@ kernel/ksu_main.c
 kernel/manager/pkg_observer.c
 kernel/policy/feature.c
 kernel/selinux/rules.c
+kernel/selinux/sepolicy.c
 EOF
 sed -i 's/^          //' \
   "$BUILD_TEMP/sukisu-compat-files.expected"
