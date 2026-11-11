@@ -16,4 +16,6 @@ SukiSU builtin 从 `b16e899a555e9b96aa1225f049cd7274820ca5b8` 更新至 `6076949
 
 SUSFS 上游已发布 v2.4.0，最新提交为 `69b8e734920b8f9ed885ab8d112969719698e242`。这套变化包含 SELinux hide 重构，需要与本项目的 4.19 专用移植逐项整合；本次内核和 SukiSU 候选继续使用现有 SUSFS v2.3.0 `ee155a1ad4219804a7c54cb39dd4fa1b5c2a3fa4`，不将尚未移植的 2.4.0 记为已同步。AnyKernel3、Clang 和 NDK 保持原 pin。
 
-首次完整构建在链接阶段发现新版 builtin 调用了 SUSFS 2.4.0 的 SELinux 类型记录接口，v2.3.0 没有该接口。当前 4.19 使用独立 SELinux 策略备份；兼容补丁仅在 4.19 禁用上述 2.4 专用调用，保留现有隐藏实现。完整构建需要重试。
+首次完整构建在链接阶段发现新版 builtin 调用了 SUSFS 2.4.0 的 SELinux 类型记录接口，v2.3.0 没有该接口。当前 4.19 使用独立 SELinux 策略备份；兼容补丁仅在 4.19 禁用上述 2.4 专用调用，保留现有隐藏实现。重试构建 `local-full-20261112-025803` 使用 builder `35a34bac8b4781305e001d0034e354543ab8dc31`，预检、补丁审计、完整配置编译、产物审计、用户态工具、打包和导出校验通过。配置确认 `CONFIG_KSU_SELINUX_HIDE_4_19=y` 和 `CONFIG_KSU_SUSFS_PRIORITY_UID_FILTER=y`。本地构建、配置和发布工具共 28 项测试通过；挂载文件分类器与扩展 ABI 宿主测试通过。
+
+Image SHA-256：`dde72be89ba2cf4d9e83c80dbb6e4d31b1e2d44d2a254e412d019ded40b3c7a0`。安装 ZIP SHA-256：`a85b51cb248ec11fcc8250eeefba053a8ecedb38bd214d7a456bbf919cbee33`。本次产物尚未真机测试或正式发布。
