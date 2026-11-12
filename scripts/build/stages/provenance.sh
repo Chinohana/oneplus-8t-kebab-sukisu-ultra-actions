@@ -135,7 +135,7 @@ if test "$ENABLE_SUSFS" = "true"; then
     echo "abi=arm64-v8a"
     echo "android_ndk_version=$ANDROID_NDK_VERSION"
     echo "builder_commit=$BUILDER_COMMIT"
-    cat artifacts/tool/ksu_susfs-v2.3.0-arm64.sha256
+    cat "artifacts/tool/ksu_susfs-${SUSFS_VERSION}-arm64.sha256"
   } | tee artifacts/tool/tool-provenance.txt
 fi
 

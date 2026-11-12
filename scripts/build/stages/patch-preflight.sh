@@ -91,12 +91,12 @@ cat > "$BUILD_TEMP/sukisu-compat-files.expected" <<'EOF'
 kernel/Makefile
 kernel/extension/cpu_spoof.c
 kernel/extension/dynamic_sig_fallback.c
-kernel/feature/mount_hide.c
 kernel/kernel_includes.h
 kernel/ksu_main.c
 kernel/manager/pkg_observer.c
 kernel/policy/feature.c
 kernel/selinux/rules.c
+kernel/selinux/sepolicy.c
 EOF
 sed -i 's/^          //' \
   "$BUILD_TEMP/sukisu-compat-files.expected"

@@ -16,7 +16,7 @@ for attempt in 1 2 3; do
 done
 git -C susfs_reference checkout --detach "$SUSFS_COMMIT"
 test "$(git -C susfs_reference rev-parse HEAD)" = "$SUSFS_COMMIT"
-grep -Fqx '#define SUSFS_VERSION "v2.3.0"' \
+grep -Fqx "#define SUSFS_VERSION \"$SUSFS_VERSION\"" \
   susfs_reference/kernel_patches/include/linux/susfs.h
 
 git init sm8250_reference

@@ -213,7 +213,7 @@ def main():
         package_root = args.repair_record.parent if args.repair_record else args.artifacts / 'kernel'
         sources = [package_root / record['package'],
                    args.artifacts / 'kernel/selected.config', args.artifacts / 'kernel/selected.System.map',
-                   args.artifacts / 'tool/ksu_susfs-v2.3.0-arm64']
+                   artifacts.susfs_tool_path(args.artifacts, fields(args.artifacts)['susfs_version'])]
         for source in sources:
             shutil.copyfile(source, temporary / source.name)
         provenance_name = 'source-build-provenance.txt' if args.repair_record else 'build-provenance.txt'

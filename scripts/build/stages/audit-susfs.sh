@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-grep -Fqx '#define SUSFS_VERSION "v2.3.0"' \
+grep -Fqx "#define SUSFS_VERSION \"$SUSFS_VERSION\"" \
   kernel_experiment/include/linux/susfs.h
 grep -Fqx '#define SUSFS_VARIANT "NON-GKI"' \
   kernel_experiment/include/linux/susfs.h
@@ -89,8 +89,9 @@ if test "$batch_sid_calls" -ne 2; then
   exit 1
 fi
 
+susfs_diff="audit/susfs-${SUSFS_VERSION}-to-sm8250-4.19.diff"
 diff -u \
   susfs_reference/kernel_patches/fs/susfs.c \
   kernel_experiment/fs/susfs.c \
-  > audit/susfs-v2.3-to-sm8250-4.19.diff || true
-test -s audit/susfs-v2.3-to-sm8250-4.19.diff
+  > "$susfs_diff" || true
+test -s "$susfs_diff"

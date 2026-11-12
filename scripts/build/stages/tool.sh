@@ -28,13 +28,12 @@ grep -Eq 'ELF 64-bit.*ARM aarch64' \
   > audit/ksu-susfs-tool.readelf.txt
 
 mkdir -p artifacts/tool
-cp "$tool_source" \
-  artifacts/tool/ksu_susfs-v2.3.0-arm64
-sha256sum artifacts/tool/ksu_susfs-v2.3.0-arm64 |
-  tee artifacts/tool/ksu_susfs-v2.3.0-arm64.sha256
+tool_path="artifacts/tool/ksu_susfs-${SUSFS_VERSION}-arm64"
+cp "$tool_source" "$tool_path"
+sha256sum "$tool_path" | tee "$tool_path.sha256"
 cp "$ndk_root/source.properties" \
   artifacts/tool/ndk-source.properties
 
-tool_artifact_name="${BUILD_CHANNEL^^}_ksu_susfs-tool_v2.3.0_${PROFILE}_HIDE-${ENABLE_SELINUX_HIDE}_SF-${SUSFS_COMMIT:0:12}_NDK-${ANDROID_NDK_VERSION}_WF-${BUILDER_COMMIT:0:12}"
+tool_artifact_name="${BUILD_CHANNEL^^}_ksu_susfs-tool_${SUSFS_VERSION}_${PROFILE}_HIDE-${ENABLE_SELINUX_HIDE}_SF-${SUSFS_COMMIT:0:12}_NDK-${ANDROID_NDK_VERSION}_WF-${BUILDER_COMMIT:0:12}"
 echo "TOOL_ARTIFACT_NAME=$tool_artifact_name" \
   >> "$BUILD_ENV"

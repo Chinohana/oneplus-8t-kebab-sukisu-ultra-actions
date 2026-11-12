@@ -4,12 +4,19 @@ import argparse
 import hashlib
 import json
 from pathlib import Path, PurePosixPath
+import re
 import struct
 import zipfile
 
 
 def digest(data):
     return hashlib.sha256(data).hexdigest()
+
+
+def susfs_tool_path(root, version):
+    if not re.fullmatch(r'v[0-9]+\.[0-9]+\.[0-9]+', version):
+        raise ValueError(f'Invalid SUSFS version: {version}')
+    return root / 'tool' / f'ksu_susfs-{version}-arm64'
 
 
 def verify(root):
@@ -69,8 +76,8 @@ def verify(root):
               'image_sha256': digest(image), 'config_sha256': expected['selected.config'],
               'system_map_sha256': expected['selected.System.map'], 'zip_members': members,
               'device_tested': False}
-    tool = root / 'tool/ksu_susfs-v2.3.0-arm64'
     if fields['enable_susfs'] == 'true':
+        tool = susfs_tool_path(root, fields['susfs_version'])
         data = tool.read_bytes()
         if data[:6] != b'\x7fELF\x02\x01' or struct.unpack_from('<H', data, 18)[0] != 183:
             raise ValueError('Wrong SUSFS tool architecture')

@@ -4,8 +4,8 @@ set -euo pipefail
 feature_tags=""
 string_feature=""
 if test "$ENABLE_SUSFS" = "true"; then
-  feature_tags="${PROFILE}"
-  string_feature="SUSFS v2.3 ${PROFILE}"
+  feature_tags="${PROFILE}-SUSFS${SUSFS_VERSION}"
+  string_feature="SUSFS ${SUSFS_VERSION} ${PROFILE}"
 else
   feature_tags="nosusfs"
   string_feature="no SUSFS"

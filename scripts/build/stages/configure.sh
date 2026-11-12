@@ -6,6 +6,7 @@ susfs_children_off() {
   local config="$1"
   local option
   for option in \
+    KSU_SUSFS_PRIORITY_UID_FILTER \
     KSU_SUSFS_SUS_PATH \
     KSU_SUSFS_SUS_MOUNT \
     KSU_SUSFS_SUS_KSTAT \
@@ -63,6 +64,7 @@ configure_tree() {
     fi
     if test "$profile" = extended-full; then
       for option in \
+        KSU_SUSFS_PRIORITY_UID_FILTER \
         KSU_SUSFS_SUS_PATH \
         KSU_SUSFS_SPOOF_UNAME \
         KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS \
@@ -131,6 +133,7 @@ verify_susfs_profile() {
         CONFIG_KSU_SUSFS_ENABLE_LOG \
         CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS \
         CONFIG_KSU_SUSFS_OPEN_REDIRECT \
+        CONFIG_KSU_SUSFS_PRIORITY_UID_FILTER \
         CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG \
         CONFIG_KSU_SUSFS_SPOOF_UNAME \
         CONFIG_KSU_SUSFS_SUS_KSTAT \
