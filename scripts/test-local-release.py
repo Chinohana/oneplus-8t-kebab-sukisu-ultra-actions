@@ -155,7 +155,7 @@ class PhoneEvidence(unittest.TestCase):
                           'kernel_commit': fixture_module.KERNEL, 'build_fingerprint': fingerprint,
                           'enable_susfs': susfs, 'enable_selinux_hide': hide, 'use_anykernel': 'true',
                           'profile': profile if susfs == 'true' else 'selected', 'local_run_id': variant,
-                          'package': 'candidate.zip'}
+                          'package': 'candidate.zip', 'susfs_version': 'v2.4.0'}
             (kernel / 'build-provenance.txt').write_text(''.join(f'{key}={value}\n' for key, value in provenance.items()))
             (kernel / 'build-provenance.txt.sha256').write_text(release.sha(kernel / 'build-provenance.txt') + '\n')
             stages = ['baseline-identity', 'fingerprint', 'patch-preflight', 'source', 'patches', 'audit-hooks',
@@ -163,7 +163,7 @@ class PhoneEvidence(unittest.TestCase):
             (audit / 'local-result.json').write_text(json.dumps({'builder_commit': head, 'run_id': variant,
                 'result': 'build-passed', 'stages': [{'stage': name, 'exit_code': 0} for name in stages]}))
             if susfs == 'true':
-                tool = delivery / 'tool/ksu_susfs-v2.3.0-arm64'
+                tool = delivery / 'tool/ksu_susfs-v2.4.0-arm64'
                 tool.parent.mkdir()
                 tool.write_bytes(b'\x7fELF\x02\x01' + bytes(12) + bytes((183, 0)) + bytes(44))
                 tool.with_name(tool.name + '.sha256').write_text(release.sha(tool) + '\n')

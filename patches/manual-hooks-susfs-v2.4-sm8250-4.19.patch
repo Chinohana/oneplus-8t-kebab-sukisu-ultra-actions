@@ -1,12 +1,12 @@
 diff --git a/block/ioprio.c b/block/ioprio.c
-index f0ee9cc..9c6b53c 100644
+index f0ee9cc33..47cf2166d 100644
 --- a/block/ioprio.c
 +++ b/block/ioprio.c
 @@ -90,6 +90,10 @@ int ioprio_check_cap(int ioprio)
  	return 0;
  }
  
-+#ifdef CONFIG_KSU_SUSFS
++#ifdef CONFIG_KSU_SUSFS_PRIORITY_UID_FILTER
 +extern bool susfs_is_priority_uid_filtered(uid_t uid);
 +#endif
 +
@@ -19,7 +19,7 @@ index f0ee9cc..9c6b53c 100644
  				user = current_user();
 -			else
 +			else {
-+#ifdef CONFIG_KSU_SUSFS
++#ifdef CONFIG_KSU_SUSFS_PRIORITY_UID_FILTER
 +				if (current_uid().val >= 10000 && susfs_is_priority_uid_filtered(uid.val))
 +					break;
 +#endif
@@ -34,7 +34,7 @@ index f0ee9cc..9c6b53c 100644
  				user = current_user();
 -			else
 +			else {
-+#ifdef CONFIG_KSU_SUSFS
++#ifdef CONFIG_KSU_SUSFS_PRIORITY_UID_FILTER
 +				if (current_uid().val >= 10000 && susfs_is_priority_uid_filtered(uid.val))
 +					break;
 +#endif
@@ -44,7 +44,7 @@ index f0ee9cc..9c6b53c 100644
  			if (!user)
  				break;
 diff --git a/fs/Makefile b/fs/Makefile
-index 051c1d9..a7ce0db 100644
+index 051c1d93d..a7ce0db34 100644
 --- a/fs/Makefile
 +++ b/fs/Makefile
 @@ -15,6 +15,8 @@ obj-y :=	open.o read_write.o file_table.o super.o \
@@ -57,7 +57,7 @@ index 051c1d9..a7ce0db 100644
  obj-y +=	buffer.o block_dev.o direct-io.o mpage.o
  else
 diff --git a/fs/exec.c b/fs/exec.c
-index f0def1b..e064cf7 100644
+index f0def1bcb..e064cf790 100644
 --- a/fs/exec.c
 +++ b/fs/exec.c
 @@ -63,6 +63,10 @@
@@ -144,7 +144,7 @@ index f0def1b..e064cf7 100644
  	current->fs->in_exec = 0;
  	current->in_execve = 0;
 diff --git a/fs/namespace.c b/fs/namespace.c
-index 4a69b91..2d5efc6 100644
+index 4a69b9107..2d5efc676 100644
 --- a/fs/namespace.c
 +++ b/fs/namespace.c
 @@ -1,5 +1,5 @@
@@ -619,7 +619,7 @@ index 4a69b91..2d5efc6 100644
 +}
 +#endif // #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
 diff --git a/fs/notify/fdinfo.c b/fs/notify/fdinfo.c
-index 74aeabb..3b07d93 100644
+index 74aeabbf0..3b07d938c 100644
 --- a/fs/notify/fdinfo.c
 +++ b/fs/notify/fdinfo.c
 @@ -14,6 +14,15 @@
@@ -757,7 +757,7 @@ index 74aeabb..3b07d93 100644
  	unsigned int mflags = 0;
  	struct inode *inode;
 diff --git a/fs/open.c b/fs/open.c
-index 13d70db..90d2173 100644
+index 13d70db56..90d217393 100644
 --- a/fs/open.c
 +++ b/fs/open.c
 @@ -32,6 +32,10 @@
@@ -841,7 +841,7 @@ index 13d70db..90d2173 100644
  		file = file_open_name(name, flags, mode);
  		putname(name);
 diff --git a/fs/proc/fd.c b/fs/proc/fd.c
-index 253e503..73fa189 100644
+index 253e50397..73fa189fb 100644
 --- a/fs/proc/fd.c
 +++ b/fs/proc/fd.c
 @@ -13,10 +13,24 @@
@@ -955,7 +955,7 @@ index 253e503..73fa189 100644
  	if (seq_has_overflowed(m))
  		goto out;
 diff --git a/fs/proc_namespace.c b/fs/proc_namespace.c
-index 5b8d065..4fb12ce 100644
+index 5b8d065fa..4fb12cecf 100644
 --- a/fs/proc_namespace.c
 +++ b/fs/proc_namespace.c
 @@ -13,11 +13,22 @@
@@ -1033,7 +1033,7 @@ index 5b8d065..4fb12ce 100644
  	if (sb->s_op->show_devname) {
  		seq_puts(m, "device ");
 diff --git a/fs/read_write.c b/fs/read_write.c
-index ec2d20d..e26173c 100644
+index ec2d20ddd..e26173ca0 100644
 --- a/fs/read_write.c
 +++ b/fs/read_write.c
 @@ -434,10 +434,20 @@ ssize_t kernel_read(struct file *file, void *buf, size_t count, loff_t *pos)
@@ -1067,7 +1067,7 @@ index ec2d20d..e26173c 100644
  		fdput(f);
  	}
 diff --git a/fs/stat.c b/fs/stat.c
-index 3765431..3286755 100644
+index 376543199..328675503 100644
 --- a/fs/stat.c
 +++ b/fs/stat.c
 @@ -18,9 +18,20 @@
@@ -1190,7 +1190,7 @@ index 3765431..3286755 100644
  		goto out;
  
 diff --git a/fs/statfs.c b/fs/statfs.c
-index 2978659..7f69ec3 100644
+index 29786598c..7f69ec33f 100644
 --- a/fs/statfs.c
 +++ b/fs/statfs.c
 @@ -9,6 +9,12 @@
@@ -1301,10 +1301,10 @@ index 2978659..7f69ec3 100644
  
 diff --git a/fs/susfs.c b/fs/susfs.c
 new file mode 100644
-index 0000000..ea59c78
+index 000000000..105c29bca
 --- /dev/null
 +++ b/fs/susfs.c
-@@ -0,0 +1,1974 @@
+@@ -0,0 +1,2046 @@
 +#include <linux/version.h>
 +#include <linux/cred.h>
 +#include <linux/fs.h>
@@ -1332,6 +1332,7 @@ index 0000000..ea59c78
 +#include <linux/limits.h>
 +#include <linux/rcupdate.h>
 +#include <linux/string.h>
++#include <linux/vmalloc.h>
 +#include <linux/susfs.h>
 +#include "fuse/fuse_i.h"
 +#include "mount.h"
@@ -2552,6 +2553,19 @@ index 0000000..ea59c78
 +#endif // #ifdef CONFIG_KSU_SUSFS_SUS_MAP
 +
 +/* priority uid filter */
++#ifdef CONFIG_KSU_SUSFS_PRIORITY_UID_FILTER
++/*****************************************/
++/* getpriority uid filter (bitmap)       */
++/*****************************************/
++/* The uids that are hidden from the apps that abuse the getpriority syscall
++ * to find out the existing uids. Only the uids within the app uid range
++ * (10000 - 19999) are supported.
++ */
++#define SUSFS_PRIORITY_UID_FILTER_MIN_UID 10000
++#define SUSFS_PRIORITY_UID_FILTER_MAX_UID 19999
++#define SUSFS_PRIORITY_UID_FILTER_UID_NUM (SUSFS_PRIORITY_UID_FILTER_MAX_UID - SUSFS_PRIORITY_UID_FILTER_MIN_UID + 1)
++#define SUSFS_PRIORITY_UID_FILTER_BITMAP_LEN BITS_TO_LONGS(SUSFS_PRIORITY_UID_FILTER_UID_NUM)
++
 +struct susfs_priority_uid_filter_bitmap {
 +	struct rcu_head			rcu;
 +	unsigned long			bits[SUSFS_PRIORITY_UID_FILTER_BITMAP_LEN];
@@ -2596,42 +2610,104 @@ index 0000000..ea59c78
 +}
 +
 +/*
-+ * Resolves the uid of the given app package name with the owner uid of the
-+ * data path of the app ('/data/data/<app_name>').
++ * Resolves the uid of the given app package name from /data/system/packages.list.
 + * Returns 0 on success, a negative errno on failure.
 + */
 +static int susfs_resolve_priority_app_uid(const char *app_name, uid_t *uid) {
-+	char app_path[512];
-+	struct path path;
-+	struct kstat st;
-+	int len;
++	struct file *fp;
++	char *buf = NULL;
++	char *line, *tmp, *p;
++	char *pkg_name, *uid_str;
++	loff_t pos = 0;
++	size_t size;
++	u32 val;
 +	int ret;
 +
-+	len = scnprintf(app_path, sizeof(app_path), "/data/data/%s", app_name);
-+	if (len < 0 || len >= sizeof(app_path)) {
-+		SUSFS_LOGE("the app name '%s' is too long\n", app_name);
-+		return -EINVAL;
-+	}
-+
-+	ret = kern_path(app_path, LOOKUP_FOLLOW, &path);
-+	if (ret) {
-+		SUSFS_LOGE("failed to look up '%s': %d\n", app_path, ret);
-+		return ret;
-+	}
-+
-+	ret = vfs_getattr(&path, &st, STATX_BASIC_STATS, 0);
-+	path_put(&path);
-+	if (ret) {
-+		SUSFS_LOGE("failed to get the attributes of '%s': %d\n", app_path, ret);
-+		return ret;
-+	}
-+
-+	*uid = from_kuid(&init_user_ns, st.uid);
-+	if (*uid < SUSFS_PRIORITY_UID_FILTER_MIN_UID ||
-+		*uid > SUSFS_PRIORITY_UID_FILTER_MAX_UID)
++	if (!app_name || !*app_name || !uid)
 +		return -EINVAL;
 +
-+	return 0;
++	if (!susfs_is_valid_app_name(app_name))
++		return -EINVAL;
++
++	fp = filp_open("/data/system/packages.list", O_RDONLY | O_NOATIME, 0);
++	if (IS_ERR(fp)) {
++		ret = PTR_ERR(fp);
++		SUSFS_LOGE("failed to open /data/system/packages.list: %d\n", ret);
++		/* Distinguish an unavailable list from an uninstalled app. */
++		return ret == -ENOENT ? -EAGAIN : ret;
++	}
++
++	size = i_size_read(file_inode(fp));
++	if (size <= 0 || size > (4 * 1024 * 1024)) {
++		filp_close(fp, NULL);
++		return -EFBIG;
++	}
++
++	buf = vmalloc(size + 1);
++	if (!buf) {
++		filp_close(fp, NULL);
++		return -ENOMEM;
++	}
++	buf[size] = '\0';
++
++	ret = kernel_read(fp, buf, size, &pos);
++	filp_close(fp, NULL);
++	if (ret != (int)size) {
++		vfree(buf);
++		return ret < 0 ? ret : -EIO;
++	}
++
++	line = buf;
++	while (line && *line) {
++		p = strchr(line, '\n');
++		if (p) {
++			*p = '\0';
++			tmp = p + 1;
++		} else {
++			tmp = NULL;
++		}
++
++		/* skip empty lines */
++		if (*line == '\0' || *line == '\r') {
++			line = tmp;
++			continue;
++		}
++
++		/* packages.list format: <package> <uid> ... */
++		pkg_name = strsep(&line, " \t");
++		if (!pkg_name || *pkg_name == '\0') {
++			line = tmp;
++			continue;
++		}
++
++		uid_str = strsep(&line, " \t");
++		if (!uid_str || *uid_str == '\0') {
++			line = tmp;
++			continue;
++		}
++
++		if (!strcmp(pkg_name, app_name)) {
++			if (kstrtou32(uid_str, 10, &val)) {
++				vfree(buf);
++				return -EINVAL;
++			}
++
++			*uid = val % 100000;
++
++			vfree(buf);
++
++			if (*uid < SUSFS_PRIORITY_UID_FILTER_MIN_UID ||
++			    *uid > SUSFS_PRIORITY_UID_FILTER_MAX_UID)
++				return -ERANGE;
++
++			return 0;
++		}
++
++		line = tmp;
++	}
++
++	vfree(buf);
++	return -ENOENT;
 +}
 +
 +/*
@@ -2640,11 +2716,11 @@ index 0000000..ea59c78
 + *
 + * The spaces before and after the commas are ignored.
 + * The given string is modified while it is being parsed.
-+ * If 'skip_failed' is true, the apps whose data path cannot be found are
-+ * skipped (they are uninstalled already), otherwise an error is returned.
++ * Skip missing packages and UIDs outside the app range. Read errors
++ * abort the update so callers keep the last published bitmap.
 + * Returns 0 on success, a negative errno on failure.
 + */
-+static int susfs_parse_priority_app_names(char *app_str, unsigned long *bits, bool skip_failed) {
++static int susfs_parse_priority_app_names(char *app_str, unsigned long *bits) {
 +	char *token = NULL;
 +	char *saveptr = app_str;
 +	uid_t uid = 0;
@@ -2663,20 +2739,10 @@ index 0000000..ea59c78
 +		}
 +
 +		ret = susfs_resolve_priority_app_uid(token, &uid);
-+		if (ret) {
-+			if (skip_failed)
-+				continue;
-+			return ret;
-+		}
-+
-+		if (uid < SUSFS_PRIORITY_UID_FILTER_MIN_UID || uid > SUSFS_PRIORITY_UID_FILTER_MAX_UID) {
-+			SUSFS_LOGE("the uid %u of the app '%s' is out of the allowed range [%d, %d]\n",
-+					uid, token, SUSFS_PRIORITY_UID_FILTER_MIN_UID,
-+					SUSFS_PRIORITY_UID_FILTER_MAX_UID);
-+			if (!skip_failed)
-+				return -EINVAL;
++		if (ret == -ENOENT || ret == -ERANGE)
 +			continue;
-+		}
++		if (ret)
++			return ret;
 +
 +		set_bit(uid - SUSFS_PRIORITY_UID_FILTER_MIN_UID, bits);
 +		SUSFS_LOGI("app_name '%s', uid '%u' is now added to priority_uid_filter_bitmap\n", token, uid);
@@ -2739,7 +2805,7 @@ index 0000000..ea59c78
 +	}
 +
 +	/*
-+	 * The data paths of the apps cannot be accessed with the selinux
++	 * The package list cannot be accessed with the SELinux
 +	 * restrictions of the calling process, hence the selinux domain is
 +	 * switched to the KernelSU one before the uids are resolved.
 +	 */
@@ -2751,7 +2817,7 @@ index 0000000..ea59c78
 +
 +	if (is_uid_filter_set_before)
 +		SUSFS_LOGI("renewing the priority uid filter\n");
-+	err = susfs_parse_priority_app_names(info->app_strings, new_bitmap->bits, false);
++	err = susfs_parse_priority_app_names(info->app_strings, new_bitmap->bits);
 +
 +	susfs_restore_creds(orig_cred);
 +	orig_cred = NULL;
@@ -2810,7 +2876,7 @@ index 0000000..ea59c78
 +	int ret = 0;
 +
 +	/*
-+	 * The data paths of the apps cannot be accessed with the selinux
++	 * The package list cannot be accessed with the SELinux
 +	 * restrictions of the default domain of the thread, hence the selinux
 +	 * domain is switched to the KernelSU one.
 +	 */
@@ -2836,7 +2902,7 @@ index 0000000..ea59c78
 +		goto out_restore_creds;
 +
 +	/* the apps that are uninstalled already are skipped */
-+	ret = susfs_parse_priority_app_names(app_strings, new_bitmap->bits, true);
++	ret = susfs_parse_priority_app_names(app_strings, new_bitmap->bits);
 +	if (ret)
 +		goto out_restore_creds;
 +
@@ -2907,6 +2973,7 @@ index 0000000..ea59c78
 +
 +	return false;
 +}
++#endif // #ifdef CONFIG_KSU_SUSFS_PRIORITY_UID_FILTER
 +
 +/* susfs avc log spoofing */
 +DEFINE_STATIC_KEY_FALSE(susfs_is_avc_log_spoofing_enabled);
@@ -3014,6 +3081,11 @@ index 0000000..ea59c78
 +	if (info->err) goto out_copy_to_user;
 +	buf_ptr = info->enabled_features + copied_size;
 +#endif
++#ifdef CONFIG_KSU_SUSFS_PRIORITY_UID_FILTER
++	info->err = copy_config_to_buf("CONFIG_KSU_SUSFS_PRIORITY_UID_FILTER\n", buf_ptr, &copied_size, SUSFS_ENABLED_FEATURES_SIZE);
++	if (info->err) goto out_copy_to_user;
++	buf_ptr = info->enabled_features + copied_size;
++#endif // #ifdef CONFIG_KSU_SUSFS_PRIORITY_UID_FILTER
 +
 +	info->err = 0;
 +out_copy_to_user:
@@ -3281,10 +3353,10 @@ index 0000000..ea59c78
 +//void __init susfs_exit(void)
 diff --git a/include/linux/susfs.h b/include/linux/susfs.h
 new file mode 100644
-index 0000000..58128c7
+index 000000000..ec6f93123
 --- /dev/null
 +++ b/include/linux/susfs.h
-@@ -0,0 +1,253 @@
+@@ -0,0 +1,260 @@
 +#ifndef KSU_SUSFS_H
 +#define KSU_SUSFS_H
 +
@@ -3296,7 +3368,7 @@ index 0000000..58128c7
 +#include <linux/susfs_def.h>
 +#include <linux/statfs.h>
 +
-+#define SUSFS_VERSION "v2.3.0"
++#define SUSFS_VERSION "v2.4.0"
 +#if LINUX_VERSION_CODE < KERNEL_VERSION(5,0,0)
 +#define SUSFS_VARIANT "NON-GKI"
 +#else
@@ -3312,6 +3384,7 @@ index 0000000..58128c7
 +/********/
 +/* ENUM */
 +/********/
++#ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
 +enum UID_SCHEME {
 +	UID_NON_APP_PROC = 0,
 +	UID_ROOT_PROC_EXCEPT_SU_PROC,
@@ -3319,6 +3392,7 @@ index 0000000..58128c7
 +	UID_UMOUNTED_APP_PROC,
 +	UID_UMOUNTED_PROC,
 +};
++#endif // #ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
 +
 +/**********/
 +/* STRUCT */
@@ -3335,7 +3409,7 @@ index 0000000..58128c7
 +	struct st_susfs_sus_path                info;
 +	char                                    target_pathname[SUSFS_MAX_LEN_PATHNAME];
 +};
-+#endif
++#endif // #ifdef CONFIG_KSU_SUSFS_SUS_PATH
 +
 +/* sus_mount */
 +#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
@@ -3389,7 +3463,7 @@ index 0000000..58128c7
 +	bool                                    is_fuse;
 +	struct st_susfs_sus_kstat               info;
 +};
-+#endif
++#endif // #ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
 +
 +/* spoof_uname */
 +#ifdef CONFIG_KSU_SUSFS_SPOOF_UNAME
@@ -3398,7 +3472,7 @@ index 0000000..58128c7
 +	char                                    version[__NEW_UTS_LEN+1];
 +	int                                     err;
 +};
-+#endif
++#endif // #ifdef CONFIG_KSU_SUSFS_SPOOF_UNAME
 +
 +/* enable_log */
 +#ifdef CONFIG_KSU_SUSFS_ENABLE_LOG
@@ -3406,7 +3480,7 @@ index 0000000..58128c7
 +	bool                                    enabled;
 +	int                                     err;
 +};
-+#endif
++#endif // #ifdef CONFIG_KSU_SUSFS_ENABLE_LOG
 +
 +/* spoof_cmdline_or_bootconfig */
 +#ifdef CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG
@@ -3414,7 +3488,7 @@ index 0000000..58128c7
 +	char                                    fake_cmdline_or_bootconfig[SUSFS_FAKE_CMDLINE_OR_BOOTCONFIG_SIZE];
 +	int                                     err;
 +};
-+#endif
++#endif // #ifdef CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG
 +
 +/* open_redirect */
 +#ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
@@ -3436,7 +3510,7 @@ index 0000000..58128c7
 +	struct st_susfs_open_redirect           info;
 +	bool                                    reversed_lookup_only;
 +};
-+#endif
++#endif // #ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
 +
 +/* sus_map */
 +#ifdef CONFIG_KSU_SUSFS_SUS_MAP
@@ -3444,13 +3518,16 @@ index 0000000..58128c7
 +	char                                    target_pathname[SUSFS_MAX_LEN_PATHNAME];
 +	int                                     err;
 +};
-+#endif
++#endif // #ifdef CONFIG_KSU_SUSFS_SUS_MAP
 +
 +/* getpriority uid filter */
++#ifdef CONFIG_KSU_SUSFS_PRIORITY_UID_FILTER
++#define SUSFS_APP_STR_BUF_SIZE 65535
 +struct st_susfs_priority_uid_filter {
 +	char                                    app_strings[SUSFS_APP_STR_BUF_SIZE];
 +	int                                     err;
 +};
++#endif // #ifdef CONFIG_KSU_SUSFS_PRIORITY_UID_FILTER
 +
 +/* avc log spoofing */
 +struct st_susfs_avc_log_spoofing {
@@ -3483,7 +3560,7 @@ index 0000000..58128c7
 +#ifdef CONFIG_KSU_SUSFS_SUS_PATH
 +void susfs_add_sus_path(void __user **user_info);
 +void susfs_add_sus_path_loop(void __user **user_info);
-+#endif
++#endif // #ifdef CONFIG_KSU_SUSFS_SUS_PATH
 +
 +/* sus_mount */
 +#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
@@ -3494,37 +3571,39 @@ index 0000000..58128c7
 +#ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
 +void susfs_add_sus_kstat(void __user **user_info);
 +void susfs_update_sus_kstat(void __user **user_info);
-+#endif
++#endif // #ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
 +
 +/* spoof_uname */
 +#ifdef CONFIG_KSU_SUSFS_SPOOF_UNAME
 +void susfs_set_uname(void __user **user_info);
 +void susfs_spoof_uname(struct new_utsname* tmp);
-+#endif
++#endif // #ifdef CONFIG_KSU_SUSFS_SPOOF_UNAME
 +
 +/* enable_log */
 +#ifdef CONFIG_KSU_SUSFS_ENABLE_LOG
 +void susfs_enable_log(void __user **user_info);
-+#endif
++#endif // #ifdef CONFIG_KSU_SUSFS_ENABLE_LOG
 +
 +/* spoof_cmdline_or_bootconfig */
 +#ifdef CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG
 +void susfs_set_cmdline_or_bootconfig(void __user **user_info);
-+#endif
++#endif // #ifdef CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG
 +
 +/* open_redirect */
 +#ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
 +void susfs_add_open_redirect(void __user **user_info);
-+#endif
++#endif // #ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
 +
 +/* sus_map */
 +#ifdef CONFIG_KSU_SUSFS_SUS_MAP
 +void susfs_add_sus_map(void __user **user_info);
-+#endif
++#endif // #ifdef CONFIG_KSU_SUSFS_SUS_MAP
 +
 +/* getpriority uid filter */
++#ifdef CONFIG_KSU_SUSFS_PRIORITY_UID_FILTER
 +void susfs_set_priority_uid_filter(void __user **user_info);
 +void susfs_parse_priority_app_strings(void);
++#endif // #ifdef CONFIG_KSU_SUSFS_PRIORITY_UID_FILTER
 +
 +void susfs_set_avc_log_spoofing(void __user **user_info);
 +
@@ -3540,10 +3619,10 @@ index 0000000..58128c7
 +#endif
 diff --git a/include/linux/susfs_def.h b/include/linux/susfs_def.h
 new file mode 100644
-index 0000000..432f596
+index 000000000..588c1ed02
 --- /dev/null
 +++ b/include/linux/susfs_def.h
-@@ -0,0 +1,177 @@
+@@ -0,0 +1,164 @@
 +#ifndef KSU_SUSFS_DEF_H
 +#define KSU_SUSFS_DEF_H
 +
@@ -3625,19 +3704,6 @@ index 0000000..432f596
 +
 +#define STATX_SUS_KSTAT 0x10000000U
 +#define STATX_SUS_KSTAT_FUSE 0x20000000U
-+
-+/*****************************************/
-+/* getpriority uid filter (bitmap)       */
-+/*****************************************/
-+/* The uids that are hidden from the apps that abuse the getpriority syscall
-+ * to find out the existing uids. Only the uids within the app uid range
-+ * (10000 - 19999) are supported.
-+ */
-+#define SUSFS_PRIORITY_UID_FILTER_MIN_UID 10000
-+#define SUSFS_PRIORITY_UID_FILTER_MAX_UID 19999
-+#define SUSFS_PRIORITY_UID_FILTER_UID_NUM (SUSFS_PRIORITY_UID_FILTER_MAX_UID - SUSFS_PRIORITY_UID_FILTER_MIN_UID + 1)
-+#define SUSFS_PRIORITY_UID_FILTER_BITMAP_LEN BITS_TO_LONGS(SUSFS_PRIORITY_UID_FILTER_UID_NUM)
-+#define SUSFS_APP_STR_BUF_SIZE 65535
 +
 +static inline bool susfs_starts_with(const char *str, const char *prefix) {
 +    while (*prefix) {
@@ -3722,7 +3788,7 @@ index 0000000..432f596
 +		susfs_is_current_proc_umounted_app()
 +#endif // #ifndef KSU_SUSFS_DEF_H
 diff --git a/kernel/reboot.c b/kernel/reboot.c
-index 3a87fee..8d4c602 100644
+index 3a87fee47..8d4c60232 100644
 --- a/kernel/reboot.c
 +++ b/kernel/reboot.c
 @@ -297,6 +297,11 @@ EXPORT_SYMBOL_GPL(kernel_power_off);
@@ -3750,14 +3816,14 @@ index 3a87fee..8d4c602 100644
  	if (!ns_capable(pid_ns->user_ns, CAP_SYS_BOOT))
  		return -EPERM;
 diff --git a/kernel/sys.c b/kernel/sys.c
-index fa98ba2..6574e9a 100644
+index fa98ba2e9..d9636f0db 100644
 --- a/kernel/sys.c
 +++ b/kernel/sys.c
-@@ -198,6 +198,10 @@ out:
+@@ -198,6 +198,10 @@ static int set_one_prio(struct task_struct *p, int niceval, int error)
  	return error;
  }
  
-+#ifdef CONFIG_KSU_SUSFS
++#ifdef CONFIG_KSU_SUSFS_PRIORITY_UID_FILTER
 +extern bool susfs_is_priority_uid_filtered(uid_t uid);
 +#endif
 +
@@ -3768,7 +3834,7 @@ index fa98ba2..6574e9a 100644
  		if (!who)
  			uid = cred->uid;
  		else if (!uid_eq(uid, cred->uid)) {
-+#ifdef CONFIG_KSU_SUSFS
++#ifdef CONFIG_KSU_SUSFS_PRIORITY_UID_FILTER
 +			if (cred->uid.val >= 10000 && susfs_is_priority_uid_filtered(uid.val))
 +				goto out_unlock;
 +#endif
@@ -3779,7 +3845,7 @@ index fa98ba2..6574e9a 100644
  		if (!who)
  			uid = cred->uid;
  		else if (!uid_eq(uid, cred->uid)) {
-+#ifdef CONFIG_KSU_SUSFS
++#ifdef CONFIG_KSU_SUSFS_PRIORITY_UID_FILTER
 +			if (cred->uid.val >= 10000 && susfs_is_priority_uid_filtered(uid.val))
 +				goto out_unlock;
 +#endif
@@ -3808,7 +3874,7 @@ index fa98ba2..6574e9a 100644
  	keuid = make_kuid(ns, euid);
  	ksuid = make_kuid(ns, suid);
 diff --git a/security/selinux/avc.c b/security/selinux/avc.c
-index 74ab889..7c82b88 100644
+index 74ab8890c..7c82b88c2 100644
 --- a/security/selinux/avc.c
 +++ b/security/selinux/avc.c
 @@ -44,6 +44,12 @@
